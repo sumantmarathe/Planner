@@ -1369,10 +1369,10 @@ export class DayPlannerApp {
 
       // Render Charts
       if (this.chartCashflowContainer) {
-        this.chartCashflowContainer.innerHTML = generateCashFlowBarChartSvg(forecast.monthlyForecasts, 720, 260);
+        this.chartCashflowContainer.innerHTML = generateCashFlowBarChartSvg(forecast.monthlyForecasts);
       }
       if (this.chartSavingsContainer) {
-        this.chartSavingsContainer.innerHTML = generateSavingsTrajectorySvg(forecast.monthlyForecasts, 440, 220);
+        this.chartSavingsContainer.innerHTML = generateSavingsTrajectorySvg(forecast.monthlyForecasts);
       }
       if (this.chartCategoriesContainer) {
         this.chartCategoriesContainer.innerHTML = generateCategoryDonutSvg(forecast.expenseCategoryBreakdown, 210);

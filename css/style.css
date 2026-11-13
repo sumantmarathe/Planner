@@ -1632,10 +1632,35 @@ body {
 
 .chart-svg-container {
   min-height: 220px;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-sm);
+}
+
+.chart-svg-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+.chart-svg-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: var(--radius-full);
+}
+
+.chart-svg-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-full);
+}
+
+.chart-svg-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+#chart-categories-container {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
 }
 
 /* Finance Sections & Breakdown */

@@ -40,3 +40,4 @@ test('IndexedDB Adapter: gracefully falls back if IDB transaction fails', async 
   assert.equal(items.length, 1);
   assert.equal(items[0].name, 'Salary');
 });
+

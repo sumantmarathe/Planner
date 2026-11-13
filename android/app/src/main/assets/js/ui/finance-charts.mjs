@@ -17,26 +17,60 @@ function escapeSvg(str) {
 }
 
 /**
+ * Formats a month label into a compact form e.g. "Nov '26"
+ */
+function formatShortMonth(monthKey, monthLabel) {
+  if (!monthKey && !monthLabel) return '';
+  if (monthLabel) {
+    const parts = monthLabel.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      const monthPart = parts[0].slice(0, 3);
+      const yearPart = parts[1].slice(-2);
+      return `${monthPart} '${yearPart}`;
+    }
+  }
+  if (monthKey && monthKey.includes('-')) {
+    const [y, m] = monthKey.split('-');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const mIdx = parseInt(m, 10) - 1;
+    return `${monthNames[mIdx] || m} '${y.slice(-2)}`;
+  }
+  return monthLabel;
+}
+
+/**
  * Generates an SVG Dual-Bar Chart comparing Monthly Income vs. Money Needed (Expenses)
  */
-export function generateCashFlowBarChartSvg(monthlyForecasts = [], width = 720, height = 280) {
+export function generateCashFlowBarChartSvg(monthlyForecasts = [], baseWidth = 720, height = 290) {
   if (!monthlyForecasts || monthlyForecasts.length === 0) {
-    return `<svg viewBox="0 0 ${width} ${height}" class="finance-svg-chart empty"><text x="50%" y="50%" text-anchor="middle" fill="#64748b" font-size="14">No financial projections available</text></svg>`;
+    return `<svg viewBox="0 0 ${baseWidth} ${height}" class="finance-svg-chart empty"><text x="50%" y="50%" text-anchor="middle" fill="#64748b" font-size="14">No financial projections available</text></svg>`;
   }
 
-  const padding = { top: 35, right: 25, bottom: 45, left: 75 };
+  const numMonths = monthlyForecasts.length;
+  // If many months (e.g. 12 or 24), guarantee minimum width per month column for clean layout
+  const minColWidth = numMonths > 12 ? 46 : (numMonths > 6 ? 54 : 64);
+  const leftPad = 75;
+  const rightPad = 25;
+  const totalNeededW = leftPad + rightPad + numMonths * minColWidth;
+  const width = Math.max(baseWidth, totalNeededW);
+
+  const isRotated = numMonths > 6;
+  const padding = {
+    top: 35,
+    right: rightPad,
+    bottom: isRotated ? 65 : 45,
+    left: leftPad
+  };
   const chartW = width - padding.left - padding.right;
   const chartH = height - padding.top - padding.bottom;
 
   let maxVal = Math.max(...monthlyForecasts.map(m => Math.max(m.totalIncome, m.totalExpense)), 10000);
-  // Round maxVal up to pleasant interval
   const magnitude = Math.pow(10, Math.floor(Math.log10(maxVal)));
   maxVal = Math.ceil(maxVal / magnitude) * magnitude;
 
-  const numMonths = monthlyForecasts.length;
   const colWidth = chartW / numMonths;
-  const barWidth = Math.max(8, Math.min(26, colWidth * 0.32));
-  const barGap = 4;
+  const barWidth = Math.max(6, Math.min(22, (colWidth - 8) / 2));
+  const barGap = Math.max(2, Math.min(4, barWidth * 0.25));
 
   // Horizontal Grid Lines
   const gridCount = 4;
@@ -63,44 +97,62 @@ export function generateCashFlowBarChartSvg(monthlyForecasts = [], width = 720, 
     const incomeY = padding.top + chartH - incomeH;
     const expenseY = padding.top + chartH - expenseH;
 
-    const surplusColor = m.netSavings >= 0 ? '#10b981' : '#ef4444';
+    const shortLabel = formatShortMonth(m.monthKey, m.monthLabel);
+    const fullLabel = m.monthLabel;
+    const displayLabel = isRotated ? shortLabel : fullLabel;
+
+    const tooltip = `${fullLabel}
+Total Inflow: ${formatRupees(m.totalIncome)}
+Money Needed: ${formatRupees(m.totalExpense)}
+Net Cash Flow: ${m.netSavings >= 0 ? '+' : ''}${formatRupees(m.netSavings)} (${m.savingsRate}% savings rate)`;
 
     barsSvg += `
       <!-- Month Group -->
       <g class="chart-month-col" data-month="${escapeSvg(m.monthKey)}">
+        <title>${escapeSvg(tooltip)}</title>
+
+        <!-- Subtle full-column hover backdrop -->
+        <rect x="${centerX - colWidth / 2}" y="${padding.top}" width="${colWidth}" height="${chartH}" fill="transparent" class="col-hover-rect" />
+
         <!-- Income Bar -->
-        <rect x="${incomeX}" y="${incomeY}" width="${barWidth}" height="${incomeH}" rx="4" fill="#10b981" opacity="0.9">
-          <title>${escapeSvg(m.monthLabel)} Income: ${formatRupees(m.totalIncome)}</title>
-        </rect>
+        <rect x="${incomeX}" y="${incomeY}" width="${barWidth}" height="${incomeH}" rx="3" fill="#10b981" opacity="0.95" />
 
         <!-- Expense (Money Needed) Bar -->
-        <rect x="${expenseX}" y="${expenseY}" width="${barWidth}" height="${expenseH}" rx="4" fill="#f43f5e" opacity="0.9">
-          <title>${escapeSvg(m.monthLabel)} Needed: ${formatRupees(m.totalExpense)}</title>
-        </rect>
-
-        <!-- Net Savings Indicator -->
-        <circle cx="${centerX}" y="${Math.min(incomeY, expenseY) - 10}" r="3" fill="${surplusColor}" />
+        <rect x="${expenseX}" y="${expenseY}" width="${barWidth}" height="${expenseH}" rx="3" fill="#f43f5e" opacity="0.95" />
 
         <!-- X Axis Label -->
-        <text x="${centerX}" y="${height - padding.bottom + 20}" fill="#cbd5e1" font-size="11" font-weight="600" text-anchor="middle">
-          ${escapeSvg(m.monthLabel)}
-        </text>
-
-        <!-- Net Savings Sub-label -->
-        <text x="${centerX}" y="${height - padding.bottom + 34}" fill="${surplusColor}" font-size="9" font-weight="700" text-anchor="middle">
-          ${m.netSavings >= 0 ? '+' : ''}${formatRupees(m.netSavings)}
-        </text>
+        ${isRotated ? `
+          <text x="${centerX}" y="${height - padding.bottom + 15}"
+                fill="#cbd5e1" font-size="10" font-weight="600"
+                text-anchor="end"
+                transform="rotate(-40 ${centerX} ${height - padding.bottom + 15})">
+            ${escapeSvg(displayLabel)}
+          </text>
+        ` : `
+          <text x="${centerX}" y="${height - padding.bottom + 18}"
+                fill="#cbd5e1" font-size="11" font-weight="600"
+                text-anchor="middle">
+            ${escapeSvg(displayLabel)}
+          </text>
+          <!-- Net Savings Sub-label (rendered when unrotated & spacious) -->
+          <text x="${centerX}" y="${height - padding.bottom + 32}"
+                fill="${m.netSavings >= 0 ? '#34d399' : '#f43f5e'}"
+                font-size="9" font-weight="700" text-anchor="middle">
+            ${m.netSavings >= 0 ? '+' : ''}${formatRupees(m.netSavings)}
+          </text>
+        `}
       </g>
     `;
   });
 
   return `
-    <svg viewBox="0 0 ${width} ${height}" class="finance-svg-chart" style="width: 100%; height: auto; display: block; overflow: visible;">
+    <svg viewBox="0 0 ${width} ${height}" class="finance-svg-chart" style="min-width: 100%; width: ${width > baseWidth ? `${width}px` : '100%'}; height: ${height}px; display: block;">
       <defs>
-        <linearGradient id="incomeGradient" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#10b981" stop-opacity="1" />
-          <stop offset="100%" stop-color="#059669" stop-opacity="0.8" />
-        </linearGradient>
+        <style>
+          .col-hover-rect:hover { fill: rgba(255, 255, 255, 0.04); }
+          .chart-month-col:hover rect:not(.col-hover-rect) { filter: brightness(1.2); }
+          .chart-month-col:hover text { fill: #ffffff; font-weight: 700; }
+        </style>
       </defs>
       <!-- Background / Grid -->
       ${gridSvg}
@@ -113,12 +165,25 @@ export function generateCashFlowBarChartSvg(monthlyForecasts = [], width = 720, 
 /**
  * Generates an SVG Cumulative Wealth & Savings Projection Curve
  */
-export function generateSavingsTrajectorySvg(monthlyForecasts = [], width = 720, height = 240) {
+export function generateSavingsTrajectorySvg(monthlyForecasts = [], baseWidth = 520, height = 250) {
   if (!monthlyForecasts || monthlyForecasts.length === 0) {
-    return `<svg viewBox="0 0 ${width} ${height}" class="finance-svg-chart empty"><text x="50%" y="50%" text-anchor="middle" fill="#64748b" font-size="14">No savings projection available</text></svg>`;
+    return `<svg viewBox="0 0 ${baseWidth} ${height}" class="finance-svg-chart empty"><text x="50%" y="50%" text-anchor="middle" fill="#64748b" font-size="14">No savings projection available</text></svg>`;
   }
 
-  const padding = { top: 30, right: 35, bottom: 40, left: 75 };
+  const numPoints = monthlyForecasts.length;
+  const isDense = numPoints > 6;
+  const minStepX = isDense ? 42 : 55;
+  const leftPad = 75;
+  const rightPad = 35;
+  const totalNeededW = leftPad + rightPad + numPoints * minStepX;
+  const width = Math.max(baseWidth, totalNeededW);
+
+  const padding = {
+    top: 30,
+    right: rightPad,
+    bottom: isDense ? 55 : 40,
+    left: leftPad
+  };
   const chartW = width - padding.left - padding.right;
   const chartH = height - padding.top - padding.bottom;
 
@@ -127,13 +192,12 @@ export function generateSavingsTrajectorySvg(monthlyForecasts = [], width = 720,
   const maxVal = Math.max(10000, ...values);
   const range = maxVal - minVal || 1;
 
-  const numPoints = monthlyForecasts.length;
   const stepX = chartW / (numPoints - 1 || 1);
 
   const points = monthlyForecasts.map((m, idx) => {
     const x = padding.left + idx * stepX;
     const y = padding.top + chartH - ((m.cumulativeSavings - minVal) / range) * chartH;
-    return { x, y, month: m.monthLabel, value: m.cumulativeSavings };
+    return { x, y, month: m.monthLabel, monthKey: m.monthKey, value: m.cumulativeSavings };
   });
 
   // Zero reference line
@@ -154,23 +218,39 @@ export function generateSavingsTrajectorySvg(monthlyForecasts = [], width = 720,
   const firstPt = points[0];
   const areaD = `${pathD} L ${lastPt.x} ${zeroY} L ${firstPt.x} ${zeroY} Z`;
 
+  // Milestone stride to avoid label collisions
+  const labelStride = numPoints > 14 ? 4 : (numPoints > 8 ? 2 : 1);
+
   let dotsSvg = '';
-  points.forEach((pt) => {
+  points.forEach((pt, idx) => {
+    const isFirst = idx === 0;
+    const isLast = idx === points.length - 1;
+    const isMilestone = isFirst || isLast || (idx % labelStride === 0);
+    const shortMonth = formatShortMonth(pt.monthKey, pt.month);
+
     dotsSvg += `
-      <circle cx="${pt.x}" y="${pt.y}" r="4" fill="#38bdf8" stroke="#0f172a" stroke-width="2">
+      <g class="trajectory-point" tabindex="0">
         <title>${escapeSvg(pt.month)}: ${formatRupees(pt.value)}</title>
-      </circle>
-      <text x="${pt.x}" y="${pt.y - 10}" fill="#38bdf8" font-size="10" font-weight="700" text-anchor="middle">
-        ${formatRupees(pt.value)}
-      </text>
-      <text x="${pt.x}" y="${height - padding.bottom + 18}" fill="#94a3b8" font-size="10" text-anchor="middle">
-        ${escapeSvg(pt.month)}
-      </text>
+        <circle cx="${pt.x}" y="${pt.y}" r="${isMilestone ? 4 : 2.5}" fill="#38bdf8" stroke="#0f172a" stroke-width="2" />
+        ${isMilestone ? `
+          <text x="${pt.x}" y="${pt.y - 10}" fill="#38bdf8" font-size="9" font-weight="700" text-anchor="middle">
+            ${formatRupees(pt.value)}
+          </text>
+        ` : ''}
+        ${(isMilestone || !isDense) ? `
+          <text x="${pt.x}" y="${height - padding.bottom + (isDense ? 15 : 18)}"
+                fill="#94a3b8" font-size="10"
+                text-anchor="${isDense ? 'end' : 'middle'}"
+                ${isDense ? `transform="rotate(-40 ${pt.x} ${height - padding.bottom + 15})"` : ''}>
+            ${escapeSvg(isDense ? shortMonth : pt.month)}
+          </text>
+        ` : ''}
+      </g>
     `;
   });
 
   return `
-    <svg viewBox="0 0 ${width} ${height}" class="finance-svg-chart" style="width: 100%; height: auto; display: block; overflow: visible;">
+    <svg viewBox="0 0 ${width} ${height}" class="finance-svg-chart" style="min-width: 100%; width: ${width > baseWidth ? `${width}px` : '100%'}; height: ${height}px; display: block;">
       <defs>
         <linearGradient id="savingsAreaGradient" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.35" />
@@ -191,7 +271,7 @@ export function generateSavingsTrajectorySvg(monthlyForecasts = [], width = 720,
       <!-- Curve Stroke -->
       <path d="${pathD}" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
 
-      <!-- Data Dots & Values -->
+      <!-- Data Dots & Milestone Labels -->
       ${dotsSvg}
     </svg>
   `;
