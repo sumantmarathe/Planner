@@ -21,6 +21,11 @@ import {
   generateOccurrences,
   isDateScheduledByRule
 } from './habit.mjs';
+import {
+  createFinanceRecord,
+  validateFinanceRecord,
+  calculateFinancialForecast
+} from './finance.mjs';
 
 /**
  * In-memory storage adapter for unit tests & node headless environments
@@ -233,24 +238,31 @@ export class IndexedDBStorageAdapter {
 /**
  * Domain-level Unified Planner & Habit Store
  */
-export function createPlannerStore(customActAdapter, customHabitAdapter) {
+export function createPlannerStore(customActAdapter, customHabitAdapter, customFinanceAdapter) {
   let actAdapter = customActAdapter;
   let habitAdapter = customHabitAdapter;
+  let financeAdapter = customFinanceAdapter;
 
   if (actAdapter && !habitAdapter) {
     habitAdapter = new MemoryStorageAdapter();
   }
+  if (actAdapter && !financeAdapter) {
+    financeAdapter = new MemoryStorageAdapter();
+  }
 
   if (!actAdapter) {
     if (typeof indexedDB !== 'undefined') {
-      actAdapter = new IndexedDBStorageAdapter('DayPlannerDB', 'activities', 2);
-      habitAdapter = new IndexedDBStorageAdapter('DayPlannerDB', 'habits', 2);
+      actAdapter = new IndexedDBStorageAdapter('DayPlannerDB', 'activities', 3);
+      habitAdapter = new IndexedDBStorageAdapter('DayPlannerDB', 'habits', 3);
+      financeAdapter = new IndexedDBStorageAdapter('DayPlannerDB', 'finance', 3);
     } else if (typeof localStorage !== 'undefined') {
       actAdapter = new LocalStorageAdapter('dayplanner_activities_v1');
       habitAdapter = new LocalStorageAdapter('dayplanner_habits_v1');
+      financeAdapter = new LocalStorageAdapter('dayplanner_finance_v1');
     } else {
       actAdapter = new MemoryStorageAdapter();
       habitAdapter = new MemoryStorageAdapter();
+      financeAdapter = new MemoryStorageAdapter();
     }
   }
 
@@ -528,18 +540,62 @@ export function createPlannerStore(customActAdapter, customHabitAdapter) {
     },
 
     // ------------------------------------
+    // FINANCE CRUD & FORECASTING
+    // ------------------------------------
+    async createFinanceRecord(rawInput) {
+      const record = createFinanceRecord(rawInput);
+      await financeAdapter.save(record);
+      return record;
+    },
+
+    async updateFinanceRecord(id, updates) {
+      const existing = await financeAdapter.getById(id);
+      if (!existing) {
+        throw new Error(`ERR_FINANCE_NOT_FOUND: Record ${id} not found`);
+      }
+      const validated = validateFinanceRecord({ ...existing, ...updates });
+      const merged = {
+        ...existing,
+        ...validated,
+        id: existing.id,
+        updatedAt: new Date().toISOString()
+      };
+      await financeAdapter.save(merged);
+      return merged;
+    },
+
+    async deleteFinanceRecord(id) {
+      return await financeAdapter.remove(id);
+    },
+
+    async getFinanceRecord(id) {
+      return await financeAdapter.getById(id);
+    },
+
+    async getAllFinanceRecords() {
+      return await financeAdapter.getAll();
+    },
+
+    async getFinancialForecast(options = {}) {
+      const records = await financeAdapter.getAll();
+      return calculateFinancialForecast(records, options);
+    },
+
+    // ------------------------------------
     // BACKUP & GOOGLE DRIVE PAYLOAD
     // ------------------------------------
     async exportData() {
       const activities = await actAdapter.getAll();
       const habits = await habitAdapter.getAll();
+      const financeRecords = await financeAdapter.getAll();
       const payload = {
         app: 'DayPlanner',
-        version: '2.0.0',
+        version: '3.0.0',
         exportedAt: new Date().toISOString(),
         count: activities.length,
         activities,
-        habits
+        habits,
+        financeRecords
       };
       return JSON.stringify(payload, null, 2);
     },
@@ -554,6 +610,7 @@ export function createPlannerStore(customActAdapter, customHabitAdapter) {
 
       const activities = Array.isArray(parsed) ? parsed : (parsed.activities || []);
       const habits = parsed.habits || [];
+      const financeRecords = parsed.financeRecords || [];
 
       const validActs = [];
       for (const raw of activities) {
@@ -585,13 +642,32 @@ export function createPlannerStore(customActAdapter, customHabitAdapter) {
         } catch {}
       }
 
+      const validFinance = [];
+      for (const f of financeRecords) {
+        try {
+          const validated = validateFinanceRecord(f);
+          validFinance.push({
+            id: f.id || createFinanceRecord(f).id,
+            ...validated,
+            createdAt: f.createdAt || new Date().toISOString(),
+            updatedAt: f.updatedAt || new Date().toISOString()
+          });
+        } catch {}
+      }
+
       await actAdapter.bulkSave(validActs);
       if (validHabits.length > 0) {
         await habitAdapter.bulkSave(validHabits);
       }
+      if (validFinance.length > 0) {
+        await financeAdapter.bulkSave(validFinance);
+      }
 
       return {
-        imported: validActs.length + validHabits.length,
+        imported: validActs.length + validHabits.length + validFinance.length,
+        importedActivities: validActs.length,
+        importedHabits: validHabits.length,
+        importedFinance: validFinance.length,
         success: true
       };
     }

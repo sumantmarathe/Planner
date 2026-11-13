@@ -20,6 +20,12 @@ import {
   RECURRENCE_LABELS,
   HABIT_CATEGORIES
 } from '../core/habit.mjs';
+import { formatRupees, FINANCE_TYPES, PERIODICITIES } from '../core/finance.mjs';
+import {
+  generateCashFlowBarChartSvg,
+  generateSavingsTrajectorySvg,
+  generateCategoryDonutSvg
+} from './finance-charts.mjs';
 
 export class DayPlannerApp {
   constructor() {
@@ -27,9 +33,9 @@ export class DayPlannerApp {
     this.gdrive = new GoogleDriveSyncEngine();
     this.syncTimeout = null;
 
-    this.currentPrimaryView = 'plan'; // 'plan' | 'tasks' | 'habits'
+    this.currentPrimaryView = 'plan'; // 'plan' | 'tasks' | 'habits' | 'finance'
     this.currentPlanSubView = 'day'; // 'day' | 'week' | 'month'
-    this.currentView = 'day'; // 'day' | 'week' | 'month' | 'tasks' | 'habits'
+    this.currentView = 'day'; // 'day' | 'week' | 'month' | 'tasks' | 'habits' | 'finance'
     this.selectedDate = getTodayISO();
     this.searchQuery = '';
     this.selectedPriorityFilter = '';
@@ -37,6 +43,10 @@ export class DayPlannerApp {
     this.selectedHabitCategory = 'ALL';
     this.editingActivityId = null;
     this.editingHabitId = null;
+
+    this.financeHorizonMonths = 6;
+    this.selectedFinanceFilter = 'ALL';
+    this.editingFinanceId = null;
 
     this.cacheElements();
     this.bindEvents();
@@ -48,12 +58,14 @@ export class DayPlannerApp {
     this.navBtns = document.querySelectorAll('.view-nav-btn');
     this.planSubnav = document.getElementById('plan-subnav');
     this.planSubnavBtns = document.querySelectorAll('.plan-subnav-btn');
+    this.controlsBar = document.querySelector('.controls-bar');
     this.viewPanels = {
       day: document.getElementById('view-day'),
       week: document.getElementById('view-week'),
       month: document.getElementById('view-month'),
       tasks: document.getElementById('view-tasks'),
-      habits: document.getElementById('view-habits')
+      habits: document.getElementById('view-habits'),
+      finance: document.getElementById('view-finance')
     };
 
     this.pendingBadge = document.getElementById('tasks-pending-badge');
@@ -89,6 +101,30 @@ export class DayPlannerApp {
     this.habitModalTitle = document.getElementById('habit-modal-title');
     this.habitRecurrenceSelect = document.getElementById('form-habit-recurrence');
     this.habitDaysGroup = document.getElementById('habit-days-group');
+
+    // Finance Elements
+    this.kpiProjectedSavings = document.getElementById('kpi-projected-savings');
+    this.kpiSavingsHorizon = document.getElementById('kpi-savings-horizon');
+    this.kpiAvgIncome = document.getElementById('kpi-avg-income');
+    this.kpiAvgExpense = document.getElementById('kpi-avg-expense');
+    this.kpiSavingsRate = document.getElementById('kpi-savings-rate');
+    this.kpiRateSubtext = document.getElementById('kpi-rate-subtext');
+
+    this.chartCashflowContainer = document.getElementById('chart-cashflow-container');
+    this.chartSavingsContainer = document.getElementById('chart-savings-container');
+    this.chartCategoriesContainer = document.getElementById('chart-categories-container');
+    this.financeForecastTableContainer = document.getElementById('finance-forecast-table-container');
+    this.financeRecordsContainer = document.getElementById('finance-records-container');
+
+    this.financeHorizonPills = document.querySelectorAll('.horizon-pill-btn');
+    this.financeRecordFilterPills = document.querySelectorAll('#finance-record-filter-pills .filter-pill');
+    this.btnNewFinance = document.getElementById('btn-new-finance');
+
+    this.financeModal = document.getElementById('finance-modal');
+    this.financeForm = document.getElementById('finance-form');
+    this.financeModalTitle = document.getElementById('finance-modal-title');
+    this.financePeriodicitySelect = document.getElementById('form-finance-periodicity');
+    this.financeCustomIntervalGroup = document.getElementById('finance-custom-interval-group');
 
     // Google Drive Elements
     this.syncPill = document.getElementById('btn-sync-status');
@@ -173,6 +209,41 @@ export class DayPlannerApp {
     // Habit Form Submit
     this.habitForm?.addEventListener('submit', (e) => this.handleHabitSubmit(e));
 
+    // Finance Horizon Selector
+    this.financeHorizonPills?.forEach(pill => {
+      pill.addEventListener('click', () => {
+        this.financeHorizonPills.forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        this.financeHorizonMonths = parseInt(pill.dataset.horizon, 10) || 6;
+        if (this.currentView === 'finance') this.renderFinanceView();
+      });
+    });
+
+    // Finance Records Category / Type Filter
+    this.financeRecordFilterPills?.forEach(pill => {
+      pill.addEventListener('click', () => {
+        this.financeRecordFilterPills.forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        this.selectedFinanceFilter = pill.dataset.filter || 'ALL';
+        if (this.currentView === 'finance') this.renderFinanceView();
+      });
+    });
+
+    // Finance Add Cash Flow Button
+    this.btnNewFinance?.addEventListener('click', () => {
+      this.openFinanceModal();
+    });
+
+    // Finance Periodicity toggle for custom intervals
+    this.financePeriodicitySelect?.addEventListener('change', (e) => {
+      if (this.financeCustomIntervalGroup) {
+        this.financeCustomIntervalGroup.style.display = e.target.value === 'CUSTOM' ? 'block' : 'none';
+      }
+    });
+
+    // Finance Form Submit
+    this.financeForm?.addEventListener('submit', (e) => this.handleFinanceSubmit(e));
+
     // Modal Close
     document.querySelectorAll('.modal-close-trigger').forEach(el => {
       el.addEventListener('click', () => {
@@ -215,6 +286,9 @@ export class DayPlannerApp {
       } else if (e.key.toLowerCase() === 'h' || e.key === '3') {
         e.preventDefault();
         this.switchView('habits');
+      } else if (e.key.toLowerCase() === 'f' || e.key === '4') {
+        e.preventDefault();
+        this.switchView('finance');
       } else if (e.key.toLowerCase() === 'd') {
         e.preventDefault();
         this.switchPlanSubView('day');
@@ -337,7 +411,8 @@ export class DayPlannerApp {
 
       const result = await this.gdrive.syncNow({
         activities: parsedExport.activities || [],
-        habits: parsedExport.habits || []
+        habits: parsedExport.habits || [],
+        financeRecords: parsedExport.financeRecords || []
       });
 
       if (result.merged) {
@@ -371,6 +446,8 @@ export class DayPlannerApp {
       this.currentPrimaryView = 'tasks';
     } else if (viewName === 'habits') {
       this.currentPrimaryView = 'habits';
+    } else if (viewName === 'finance') {
+      this.currentPrimaryView = 'finance';
     } else {
       return;
     }
@@ -396,9 +473,14 @@ export class DayPlannerApp {
       }
     }
 
+    // Toggle controls bar visibility (hidden on finance view)
+    if (this.controlsBar) {
+      this.controlsBar.style.display = this.currentPrimaryView === 'finance' ? 'none' : 'flex';
+    }
+
     // Toggle active view panel
     Object.entries(this.viewPanels).forEach(([key, panel]) => {
-      panel.classList.toggle('active', key === this.currentView);
+      if (panel) panel.classList.toggle('active', key === this.currentView);
     });
 
     this.render();
@@ -445,6 +527,8 @@ export class DayPlannerApp {
       headingText = `Task Backlog (${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`;
     } else if (this.currentView === 'habits') {
       headingText = `Habits & Recurring Life (${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`;
+    } else if (this.currentView === 'finance') {
+      headingText = 'Financial Planning & Wealth Projections';
     }
 
     this.currentDateHeading.textContent = headingText;
@@ -469,6 +553,9 @@ export class DayPlannerApp {
         break;
       case 'habits':
         await this.renderHabitsView();
+        break;
+      case 'finance':
+        await this.renderFinanceView();
         break;
     }
   }
@@ -1204,8 +1291,10 @@ export class DayPlannerApp {
     this.backupModal.classList.remove('open');
     this.gdriveModal.classList.remove('open');
     this.habitModal?.classList.remove('open');
+    this.financeModal?.classList.remove('open');
     this.editingActivityId = null;
     this.editingHabitId = null;
+    this.editingFinanceId = null;
   }
 
   async handleExportData() {
@@ -1240,6 +1329,283 @@ export class DayPlannerApp {
       }
     };
     reader.readAsText(file);
+  }
+
+  /* ==========================================================================
+     Financial Planning & Wealth Projections View
+     ========================================================================== */
+
+  async renderFinanceView() {
+    try {
+      const forecast = await this.store.getFinancialForecast({ horizonMonths: this.financeHorizonMonths });
+      const records = await this.store.getAllFinanceRecords();
+
+      // Update KPI Cards
+      if (this.kpiProjectedSavings) {
+        this.kpiProjectedSavings.textContent = formatRupees(forecast.totalProjectedSavings);
+        this.kpiProjectedSavings.className = `kpi-value ${forecast.totalProjectedSavings >= 0 ? 'positive' : 'negative'}`;
+      }
+      if (this.kpiSavingsHorizon) {
+        this.kpiSavingsHorizon.textContent = `Next ${this.financeHorizonMonths} Months (${forecast.totalProjectedSavings >= 0 ? 'Surplus' : 'Deficit'})`;
+      }
+      if (this.kpiAvgIncome) {
+        this.kpiAvgIncome.textContent = formatRupees(forecast.averageMonthlyIncome);
+      }
+      if (this.kpiAvgExpense) {
+        this.kpiAvgExpense.textContent = formatRupees(forecast.averageMonthlyExpense);
+      }
+      if (this.kpiSavingsRate) {
+        const rate = forecast.averageMonthlyIncome > 0
+          ? Math.round((forecast.averageMonthlySavings / forecast.averageMonthlyIncome) * 100)
+          : 0;
+        this.kpiSavingsRate.textContent = `${rate}%`;
+        if (this.kpiRateSubtext) {
+          if (rate >= 30) this.kpiRateSubtext.textContent = 'Excellent savings buffer';
+          else if (rate > 0) this.kpiRateSubtext.textContent = 'Positive cash flow';
+          else if (rate === 0) this.kpiRateSubtext.textContent = 'Breaking even';
+          else this.kpiRateSubtext.textContent = 'Spending exceeds income';
+        }
+      }
+
+      // Render Charts
+      if (this.chartCashflowContainer) {
+        this.chartCashflowContainer.innerHTML = generateCashFlowBarChartSvg(forecast.monthlyForecasts, 720, 260);
+      }
+      if (this.chartSavingsContainer) {
+        this.chartSavingsContainer.innerHTML = generateSavingsTrajectorySvg(forecast.monthlyForecasts, 440, 220);
+      }
+      if (this.chartCategoriesContainer) {
+        this.chartCategoriesContainer.innerHTML = generateCategoryDonutSvg(forecast.expenseCategoryBreakdown, 210);
+      }
+
+      // Render Monthly Forecast Table
+      if (this.financeForecastTableContainer) {
+        if (!forecast.monthlyForecasts || forecast.monthlyForecasts.length === 0) {
+          this.financeForecastTableContainer.innerHTML = `<div style="padding: 2rem; text-align: center; color: var(--text-muted);">No forecast data available.</div>`;
+        } else {
+          let tableHtml = `
+            <table class="finance-table">
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th>Total Income</th>
+                  <th>Money Needed</th>
+                  <th>Net Cash Flow</th>
+                  <th>Cumulative Savings</th>
+                  <th>Savings Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+          `;
+          forecast.monthlyForecasts.forEach(m => {
+            const isSurplus = m.netSavings >= 0;
+            tableHtml += `
+              <tr>
+                <td><strong>${this.escapeHTML(m.monthLabel)}</strong></td>
+                <td style="color: #34d399; font-weight: 600;">${formatRupees(m.totalIncome)}</td>
+                <td style="color: #fb7185; font-weight: 600;">${formatRupees(m.totalExpense)}</td>
+                <td class="${isSurplus ? 'text-surplus' : 'text-deficit'}">
+                  ${isSurplus ? '+' : ''}${formatRupees(m.netSavings)}
+                </td>
+                <td style="font-weight: 700;">${formatRupees(m.cumulativeSavings)}</td>
+                <td>${m.savingsRate}%</td>
+              </tr>
+            `;
+          });
+          tableHtml += `</tbody></table>`;
+          this.financeForecastTableContainer.innerHTML = tableHtml;
+        }
+      }
+
+      // Render Recurring Items List
+      if (this.financeRecordsContainer) {
+        let filteredRecords = records;
+        if (this.selectedFinanceFilter && this.selectedFinanceFilter !== 'ALL') {
+          filteredRecords = filteredRecords.filter(r => r.type === this.selectedFinanceFilter);
+        }
+
+        if (filteredRecords.length === 0) {
+          this.financeRecordsContainer.innerHTML = `
+            <div style="grid-column: 1 / -1; background: var(--bg-surface-elevated); border: 1px dashed var(--border-subtle); border-radius: var(--radius-md); padding: 3rem 1.5rem; text-align: center;">
+              <div style="font-size: 2.25rem; margin-bottom: 0.75rem;">💰</div>
+              <h4 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 0.35rem;">No Recurring Cash Flow Items</h4>
+              <p style="color: var(--text-muted); font-size: 0.85rem; max-width: 440px; margin: 0 auto 1.25rem auto;">
+                Add your recurring incomes (salary, investments) and expenses (rent, EMIs, utilities, groceries) to predict your upcoming money requirements.
+              </p>
+              <button class="btn btn-primary" id="btn-empty-add-finance" style="background: linear-gradient(135deg, #10b981, #059669);">
+                + Add First Cash Flow
+              </button>
+            </div>
+          `;
+          document.getElementById('btn-empty-add-finance')?.addEventListener('click', () => {
+            this.openFinanceModal();
+          });
+        } else {
+          this.financeRecordsContainer.innerHTML = '';
+          filteredRecords.forEach(rec => {
+            const isIncome = rec.type === 'INCOME';
+            const periodicityText = rec.periodicity === 'CUSTOM'
+              ? `Every ${rec.intervalMonths || 1} Months`
+              : (rec.periodicity.charAt(0) + rec.periodicity.slice(1).toLowerCase());
+
+            const card = document.createElement('div');
+            card.className = 'finance-record-card';
+            card.dataset.id = rec.id;
+
+            card.innerHTML = `
+              <div class="record-top-row">
+                <div class="record-badge-wrap">
+                  <span class="record-type-pill ${isIncome ? 'income' : 'expense'}">
+                    ${isIncome ? '↗ Income' : '↘ Expense'}
+                  </span>
+                  <span class="record-category-tag">${this.escapeHTML(rec.category || 'General')}</span>
+                </div>
+                <span class="record-amount ${isIncome ? 'income' : 'expense'}">
+                  ${isIncome ? '+' : '-'}${formatRupees(rec.amount)}
+                </span>
+              </div>
+
+              <div class="record-name">${this.escapeHTML(rec.name)}</div>
+
+              <div class="record-meta-list">
+                <div class="record-meta-item">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                  <span><strong>Periodicity:</strong> ${periodicityText}</span>
+                </div>
+                <div class="record-meta-item">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                  <span><strong>Payment Date:</strong> Day ${rec.defaultPaymentDate} ${rec.dueDate ? `(Due: Day ${rec.dueDate})` : ''}</span>
+                </div>
+                ${(rec.startDate || rec.endDate) ? `
+                  <div class="record-meta-item">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                    <span><strong>Active:</strong> ${rec.startDate || 'Start'} &rarr; ${rec.endDate || 'Ongoing'}</span>
+                  </div>
+                ` : ''}
+                ${rec.notes ? `
+                  <div class="record-meta-item" style="color: var(--text-muted); font-style: italic;">
+                    ${this.escapeHTML(rec.notes)}
+                  </div>
+                ` : ''}
+              </div>
+
+              <div class="record-actions">
+                <button class="btn btn-secondary btn-icon btn-edit-finance" title="Edit Cash Flow" style="padding: 0.35rem 0.65rem;">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                </button>
+                <button class="btn btn-secondary btn-icon btn-delete-finance" title="Delete Cash Flow" style="padding: 0.35rem 0.65rem; color: var(--p1-color);">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
+              </div>
+            `;
+
+            card.querySelector('.btn-edit-finance').addEventListener('click', () => {
+              this.openFinanceModal(rec);
+            });
+
+            card.querySelector('.btn-delete-finance').addEventListener('click', () => {
+              this.deleteFinanceRecord(rec.id);
+            });
+
+            this.financeRecordsContainer.appendChild(card);
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error rendering finance view:', err);
+      this.showToast(`Finance render error: ${err.message}`, true);
+    }
+  }
+
+  openFinanceModal(preset = {}) {
+    this.editingFinanceId = preset.id || null;
+    this.financeModalTitle.textContent = this.editingFinanceId ? 'Edit Recurring Cash Flow' : 'Add Recurring Cash Flow';
+
+    document.getElementById('form-finance-id').value = preset.id || '';
+    document.getElementById('form-finance-name').value = preset.name || '';
+    document.getElementById('form-finance-amount').value = preset.amount !== undefined ? preset.amount : '';
+    document.getElementById('form-finance-periodicity').value = preset.periodicity || 'MONTHLY';
+    document.getElementById('form-finance-interval').value = preset.intervalMonths || 2;
+    document.getElementById('form-finance-due-date').value = preset.dueDate || '';
+    document.getElementById('form-finance-payment-date').value = preset.defaultPaymentDate || 1;
+    document.getElementById('form-finance-category').value = preset.category || 'Salary';
+    document.getElementById('form-finance-start-date').value = preset.startDate || '';
+    document.getElementById('form-finance-end-date').value = preset.endDate || '';
+    document.getElementById('form-finance-notes').value = preset.notes || '';
+
+    const type = preset.type || 'EXPENSE';
+    const typeRadio = document.querySelector(`input[name="finance-type"][value="${type}"]`);
+    if (typeRadio) typeRadio.checked = true;
+
+    if (this.financeCustomIntervalGroup) {
+      this.financeCustomIntervalGroup.style.display = preset.periodicity === 'CUSTOM' ? 'block' : 'none';
+    }
+
+    this.financeModal.classList.add('open');
+    setTimeout(() => document.getElementById('form-finance-name').focus(), 50);
+  }
+
+  async handleFinanceSubmit(e) {
+    e.preventDefault();
+
+    const name = document.getElementById('form-finance-name').value.trim();
+    const type = document.querySelector('input[name="finance-type"]:checked')?.value || 'EXPENSE';
+    const amount = parseFloat(document.getElementById('form-finance-amount').value);
+    const periodicity = document.getElementById('form-finance-periodicity').value;
+    const intervalMonths = periodicity === 'CUSTOM' ? parseInt(document.getElementById('form-finance-interval').value, 10) || 1 : undefined;
+    const dueDateVal = document.getElementById('form-finance-due-date').value;
+    const dueDate = dueDateVal ? parseInt(dueDateVal, 10) : null;
+    const defaultPaymentDate = parseInt(document.getElementById('form-finance-payment-date').value, 10) || 1;
+    const category = document.getElementById('form-finance-category').value;
+    const startDate = document.getElementById('form-finance-start-date').value || null;
+    const endDate = document.getElementById('form-finance-end-date').value || null;
+    const notes = document.getElementById('form-finance-notes').value.trim();
+
+    const payload = {
+      name,
+      type,
+      amount,
+      periodicity,
+      intervalMonths,
+      dueDate,
+      defaultPaymentDate,
+      category,
+      startDate,
+      endDate,
+      notes
+    };
+
+    try {
+      if (this.editingFinanceId) {
+        await this.store.updateFinanceRecord(this.editingFinanceId, payload);
+        this.showToast('Cash flow updated');
+      } else {
+        await this.store.createFinanceRecord(payload);
+        this.showToast('Cash flow added');
+      }
+
+      this.closeModals();
+      this.queueGoogleDriveSync();
+      if (this.currentView === 'finance') {
+        await this.renderFinanceView();
+      }
+    } catch (err) {
+      alert(`Error saving cash flow: ${err.message}`);
+    }
+  }
+
+  async deleteFinanceRecord(id) {
+    if (!confirm('Are you sure you want to delete this recurring cash flow item?')) return;
+    try {
+      await this.store.deleteFinanceRecord(id);
+      this.showToast('Cash flow removed');
+      this.queueGoogleDriveSync();
+      if (this.currentView === 'finance') {
+        await this.renderFinanceView();
+      }
+    } catch (err) {
+      this.showToast(`Error: ${err.message}`, true);
+    }
   }
 
   showToast(message, isError = false) {

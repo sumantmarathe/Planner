@@ -291,14 +291,15 @@ export class GoogleDriveSyncEngine {
     try {
       const parsed = await res.json();
       if (Array.isArray(parsed)) {
-        return { activities: parsed, habits: [] };
+        return { activities: parsed, habits: [], financeRecords: [] };
       }
       return {
         activities: parsed.activities || [],
-        habits: parsed.habits || []
+        habits: parsed.habits || [],
+        financeRecords: parsed.financeRecords || []
       };
     } catch {
-      return { activities: [], habits: [] };
+      return { activities: [], habits: [], financeRecords: [] };
     }
   }
 
@@ -339,17 +340,20 @@ export class GoogleDriveSyncEngine {
       const isArrayInput = Array.isArray(localPayload);
       const localActs = isArrayInput ? localPayload : (localPayload.activities || []);
       const localHabits = isArrayInput ? [] : (localPayload.habits || []);
+      const localFinance = isArrayInput ? [] : (localPayload.financeRecords || []);
 
       const remote = await this.pullFromDrive();
       const mergedActs = mergeDatasetsByTimestamp(localActs, remote.activities || []);
       const mergedHabits = mergeDatasetsByTimestamp(localHabits, remote.habits || []);
+      const mergedFinance = mergeDatasetsByTimestamp(localFinance, remote.financeRecords || []);
 
       const payloadToSave = {
         app: 'DayPlanner',
-        version: '2.0.0',
+        version: '3.0.0',
         syncedAt: new Date().toISOString(),
         activities: mergedActs,
-        habits: mergedHabits
+        habits: mergedHabits,
+        financeRecords: mergedFinance
       };
 
       await this.pushToDrive(payloadToSave);
@@ -362,6 +366,7 @@ export class GoogleDriveSyncEngine {
         merged: payloadToSave,
         activities: mergedActs,
         habits: mergedHabits,
+        financeRecords: mergedFinance,
         status: this.status
       };
     } catch (err) {

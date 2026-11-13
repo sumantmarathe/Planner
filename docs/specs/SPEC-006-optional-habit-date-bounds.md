@@ -71,3 +71,4 @@ export interface HabitModel {
 | Both omitted | Habit occurs without date bounds (backwards compatible) |
 | Invalid date format string provided | Handled gracefully and sanitized to `null` |
 | `startDate` is after `endDate` | Validation normalizes or swaps bounds to prevent impossible intervals |
+

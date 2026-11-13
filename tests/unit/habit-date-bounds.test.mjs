@@ -90,3 +90,4 @@ test('Habit Date Bounds: Store calendar expansion respects habit start and end d
   const after = await store.queryActivities({ date: '2026-11-13', includeHabits: true });
   assert.equal(after.some(a => a.habitId === habit.id), false, 'Must not appear after endDate');
 });
+
