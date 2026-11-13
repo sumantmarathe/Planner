@@ -27,6 +27,8 @@ export class DayPlannerApp {
     this.gdrive = new GoogleDriveSyncEngine();
     this.syncTimeout = null;
 
+    this.currentPrimaryView = 'plan'; // 'plan' | 'tasks' | 'habits'
+    this.currentPlanSubView = 'day'; // 'day' | 'week' | 'month'
     this.currentView = 'day'; // 'day' | 'week' | 'month' | 'tasks' | 'habits'
     this.selectedDate = getTodayISO();
     this.searchQuery = '';
@@ -44,6 +46,8 @@ export class DayPlannerApp {
 
   cacheElements() {
     this.navBtns = document.querySelectorAll('.view-nav-btn');
+    this.planSubnav = document.getElementById('plan-subnav');
+    this.planSubnavBtns = document.querySelectorAll('.plan-subnav-btn');
     this.viewPanels = {
       day: document.getElementById('view-day'),
       week: document.getElementById('view-week'),
@@ -105,11 +109,19 @@ export class DayPlannerApp {
   }
 
   bindEvents() {
-    // View Switcher
+    // View Switcher (Plan, Tasks, Habits)
     this.navBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         const view = btn.dataset.view;
         this.switchView(view);
+      });
+    });
+
+    // Plan Sub-Navigation (Day, Week, Month)
+    this.planSubnavBtns?.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const subview = btn.dataset.subview;
+        this.switchPlanSubView(subview);
       });
     });
 
@@ -190,19 +202,24 @@ export class DayPlannerApp {
       if (e.key.toLowerCase() === 'n') {
         e.preventDefault();
         this.openActivityModal();
-      } else if (e.key.toLowerCase() === 'h') {
+      } else if (e.key.toLowerCase() === 'p' || e.key === '1') {
+        e.preventDefault();
+        this.switchView('plan');
+      } else if (e.key.toLowerCase() === 't' || e.key === '2') {
+        e.preventDefault();
+        this.switchView('tasks');
+      } else if (e.key.toLowerCase() === 'h' || e.key === '3') {
         e.preventDefault();
         this.switchView('habits');
-      } else if (e.key === '1') {
-        this.switchView('day');
-      } else if (e.key === '2') {
-        this.switchView('week');
-      } else if (e.key === '3') {
-        this.switchView('month');
-      } else if (e.key === '4') {
-        this.switchView('tasks');
-      } else if (e.key === '5') {
-        this.switchView('habits');
+      } else if (e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        this.switchPlanSubView('day');
+      } else if (e.key.toLowerCase() === 'w') {
+        e.preventDefault();
+        this.switchPlanSubView('week');
+      } else if (e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        this.switchPlanSubView('month');
       } else if (e.key === 'Escape') {
         this.closeModals();
       }
@@ -341,18 +358,53 @@ export class DayPlannerApp {
   }
 
   switchView(viewName) {
-    if (!this.viewPanels[viewName]) return;
-    this.currentView = viewName;
+    if (viewName === 'day' || viewName === 'week' || viewName === 'month') {
+      this.currentPrimaryView = 'plan';
+      this.currentPlanSubView = viewName;
+    } else if (viewName === 'plan') {
+      this.currentPrimaryView = 'plan';
+    } else if (viewName === 'tasks') {
+      this.currentPrimaryView = 'tasks';
+    } else if (viewName === 'habits') {
+      this.currentPrimaryView = 'habits';
+    } else {
+      return;
+    }
 
+    this.currentView = this.currentPrimaryView === 'plan' ? this.currentPlanSubView : this.currentPrimaryView;
+
+    // Toggle primary view buttons
     this.navBtns.forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.view === viewName);
+      btn.classList.toggle('active', btn.dataset.view === this.currentPrimaryView);
     });
 
+    // Toggle plan subnav visibility & active subview
+    if (this.planSubnav) {
+      if (this.currentPrimaryView === 'plan') {
+        this.planSubnav.classList.remove('hidden');
+        this.planSubnavBtns?.forEach(btn => {
+          const isActive = btn.dataset.subview === this.currentPlanSubView;
+          btn.classList.toggle('active', isActive);
+          btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        });
+      } else {
+        this.planSubnav.classList.add('hidden');
+      }
+    }
+
+    // Toggle active view panel
     Object.entries(this.viewPanels).forEach(([key, panel]) => {
-      panel.classList.toggle('active', key === viewName);
+      panel.classList.toggle('active', key === this.currentView);
     });
 
     this.render();
+  }
+
+  switchPlanSubView(subview) {
+    if (!['day', 'week', 'month'].includes(subview)) return;
+    this.currentPrimaryView = 'plan';
+    this.currentPlanSubView = subview;
+    this.switchView('plan');
   }
 
   navigateDate(direction) {

@@ -30,3 +30,4 @@ summary:
 - **Google Drive Storage**: Both activities and habits serialized and synced securely to `appDataFolder` (`dayplanner_database.json`).
 - **PWA & Android Parity**: Assets synchronized to `android/app/src/main/assets/` and cached in Service Worker v2.
 - **Verdict**: `PASSED`
+

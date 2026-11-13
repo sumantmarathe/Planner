@@ -353,32 +353,35 @@ export function createPlannerStore(customActAdapter, customHabitAdapter) {
 
     async queryActivities(options = {}) {
       let items = await actAdapter.getAll();
-      const habits = await habitAdapter.getAll();
+      const includeHabits = options.includeHabits !== false;
 
-      let dateRangeStart = options.startDate || options.date;
-      let dateRangeEnd = options.endDate || options.date;
+      if (includeHabits) {
+        const habits = await habitAdapter.getAll();
+        let dateRangeStart = options.startDate || options.date;
+        let dateRangeEnd = options.endDate || options.date;
 
-      if (dateRangeStart && dateRangeEnd) {
-        for (const habit of habits) {
-          const occDates = generateOccurrences(dateRangeStart, dateRangeEnd, habit.recurrence);
-          for (const d of occDates) {
-            const isCompleted = Boolean(habit.completions && habit.completions[d]);
-            items.push({
-              id: `hab_act__${habit.id}__${d}`,
-              habitId: habit.id,
-              title: habit.title,
-              description: habit.description || `Habit (${habit.timeOfDay})`,
-              date: d,
-              startTime: habit.startTime || null,
-              endTime: habit.endTime || null,
-              priority: habit.priority || PRIORITIES.P3_MEDIUM,
-              category: habit.category || 'Habit',
-              completed: isCompleted,
-              completedAt: isCompleted ? (habit.updatedAt || new Date().toISOString()) : null,
-              createdAt: habit.createdAt,
-              updatedAt: habit.updatedAt,
-              isHabit: true
-            });
+        if (dateRangeStart && dateRangeEnd) {
+          for (const habit of habits) {
+            const occDates = generateOccurrences(dateRangeStart, dateRangeEnd, habit.recurrence);
+            for (const d of occDates) {
+              const isCompleted = Boolean(habit.completions && habit.completions[d]);
+              items.push({
+                id: `hab_act__${habit.id}__${d}`,
+                habitId: habit.id,
+                title: habit.title,
+                description: habit.description || `Habit (${habit.timeOfDay})`,
+                date: d,
+                startTime: habit.startTime || null,
+                endTime: habit.endTime || null,
+                priority: habit.priority || PRIORITIES.P3_MEDIUM,
+                category: habit.category || 'Habit',
+                completed: isCompleted,
+                completedAt: isCompleted ? (habit.updatedAt || new Date().toISOString()) : null,
+                createdAt: habit.createdAt,
+                updatedAt: habit.updatedAt,
+                isHabit: true
+              });
+            }
           }
         }
       }
@@ -421,14 +424,16 @@ export function createPlannerStore(customActAdapter, customHabitAdapter) {
     async getPendingTasks(referenceDateIso = getTodayISO()) {
       const refDate = parseDateISO(referenceDateIso);
       const pastDate = new Date(refDate);
-      pastDate.setDate(pastDate.getDate() - 14);
+      pastDate.setDate(pastDate.getDate() - 30);
       const startDate = formatDateISO(pastDate);
       const futureDate = new Date(refDate);
-      futureDate.setDate(futureDate.getDate() + 30);
+      futureDate.setDate(futureDate.getDate() + 90);
       const endDate = formatDateISO(futureDate);
 
-      const items = await this.queryActivities({ startDate, endDate });
-      return filterUntickedTasks(items, referenceDateIso);
+      // Habits don't have to be added as tasks (strictly tasks)
+      const items = await this.queryActivities({ startDate, endDate, includeHabits: false });
+      const tasksOnly = items.filter(a => !a.isHabit && !a.habitId);
+      return filterUntickedTasks(tasksOnly, referenceDateIso);
     },
 
     // ------------------------------------

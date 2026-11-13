@@ -276,3 +276,4 @@ export function calculateHabitStats(habit, referenceDateIso = getTodayISO()) {
     historyLast14d
   };
 }
+

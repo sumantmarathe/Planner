@@ -885,6 +885,44 @@ body {
 .priority-option.opt-p3 input:checked + label { color: var(--p3-color); background: var(--p3-bg); }
 .priority-option.opt-p4 input:checked + label { color: var(--p4-color); background: var(--p4-bg); }
 
+/* Plan Sub-Navigation (Day / Week / Month) */
+.plan-subnav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface-elevated);
+  padding: 0.2rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  gap: 0.2rem;
+}
+
+.plan-subnav.hidden {
+  display: none !important;
+}
+
+.plan-subnav-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.plan-subnav-btn:hover {
+  color: var(--text-main);
+}
+
+.plan-subnav-btn.active {
+  background: var(--accent-primary);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.4);
+}
+
 /* Habit Tracking & Recurrence Page Styles */
 .habits-momentum-banner {
   display: grid;

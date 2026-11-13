@@ -102,3 +102,4 @@ test('Habit Analytics: accurately calculates current streak, best streak, and co
   assert.ok(todayEntry);
   assert.equal(todayEntry.completed, true);
 });
+

@@ -111,3 +111,4 @@ export interface HabitStore {
 | Invalid recurrence frequency | Fallback to `DAILY` | `ERR_VALIDATION_RECURRENCE` |
 | Streak calculation spanning months | Correctly account for calendar days and scheduled days | `STREAK_CALCULATED` |
 | Habit toggled offline | Update local state, queue for Google Drive sync | `OFFLINE_SYNC_QUEUED` |
+
