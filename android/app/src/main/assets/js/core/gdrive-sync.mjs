@@ -3,6 +3,8 @@
  * Uses Google Drive REST API v3 with appDataFolder isolation
  */
 
+import { APP_CONFIG } from '../config.mjs';
+
 export function formatSyncTimestamp(date = new Date()) {
   return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
@@ -42,9 +44,9 @@ export function mergeDatasetsByTimestamp(localItems = [], remoteItems = []) {
 
 export class GoogleDriveSyncEngine {
   constructor(options = {}) {
-    this.clientId = options.clientId || '';
-    this.fileName = options.fileName || 'dayplanner_database.json';
-    this.spaces = options.spaces || 'appDataFolder'; // strict isolation in appDataFolder
+    this.clientId = options.clientId || APP_CONFIG?.GOOGLE_CLIENT_ID || '';
+    this.fileName = options.fileName || APP_CONFIG?.DRIVE_FILE_NAME || 'dayplanner_database.json';
+    this.spaces = options.spaces || APP_CONFIG?.DRIVE_SPACES || 'appDataFolder'; // strict isolation in appDataFolder
     this.fetch = options.fetchImpl || (typeof fetch !== 'undefined' ? fetch.bind(globalThis) : null);
     this.storageKey = options.storageKey || 'dayplanner_gdrive_auth_v1';
 
@@ -158,7 +160,7 @@ export class GoogleDriveSyncEngine {
    * Browser GIS OAuth Token request
    */
   async requestAccessToken(clientIdOverride) {
-    const cid = clientIdOverride || this.clientId;
+    const cid = clientIdOverride || this.clientId || APP_CONFIG?.GOOGLE_CLIENT_ID;
     if (!cid) {
       throw new Error('ERR_NO_CLIENT_ID: Please provide a Google OAuth Client ID');
     }
@@ -171,7 +173,7 @@ export class GoogleDriveSyncEngine {
     return new Promise((resolve, reject) => {
       const tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: cid,
-        scope: 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+        scope: APP_CONFIG?.DRIVE_SCOPES || 'https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
         callback: async (resp) => {
           if (resp.error) {
             this._setStatus('ERROR', resp.error);
@@ -339,3 +341,4 @@ export class GoogleDriveSyncEngine {
     }
   }
 }
+

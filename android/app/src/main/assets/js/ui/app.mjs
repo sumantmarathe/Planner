@@ -13,6 +13,7 @@ import {
 } from '../core/calendar-utils.mjs';
 import { createPlannerStore } from '../core/store.mjs';
 import { GoogleDriveSyncEngine } from '../core/gdrive-sync.mjs';
+import { APP_CONFIG } from '../config.mjs';
 
 export class DayPlannerApp {
   constructor() {
@@ -243,9 +244,9 @@ export class DayPlannerApp {
   }
 
   async handleGDriveLogin() {
-    const clientId = this.gdriveClientIdInput.value.trim();
+    const clientId = (this.gdriveClientIdInput?.value || '').trim() || APP_CONFIG.GOOGLE_CLIENT_ID;
     if (!clientId) {
-      alert('Please enter your Google Cloud OAuth Client ID first.\n\nTip: You can create one free in Google Cloud Console > Credentials > OAuth Client ID (Web Application).');
+      alert('Google OAuth Client ID is not configured.');
       return;
     }
 

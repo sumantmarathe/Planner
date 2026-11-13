@@ -122,3 +122,4 @@ test('GDrive Sync Engine: handles authentication and mocked Drive REST interacti
   // Verify drive file now exists in mock
   assert.ok(engine.getFileId());
 });
+

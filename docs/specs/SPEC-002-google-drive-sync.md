@@ -82,3 +82,4 @@ export interface GoogleDriveSyncEngine {
 | File does not exist on Drive | Create new `dayplanner_database.json` in `appDataFolder` | `DRIVE_FILE_CREATED` |
 | Network offline | Maintain local changes, mark status `OFFLINE`, queue sync | `ERR_NETWORK_OFFLINE` |
 | Quota limit exceeded on Drive API | Backoff exponentially, alert user | `ERR_DRIVE_QUOTA` |
+

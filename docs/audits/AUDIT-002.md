@@ -29,3 +29,4 @@ summary:
 - **Confidentiality Level**: Maximum. Google `appDataFolder` scope isolates the database from general Drive view, preventing exposure or accidental external deletion.
 - **Credential Safety**: No client secret required (standard public client OAuth 2.0 PKCE / implicit token flow).
 - **Verdict**: `PASSED`
+
