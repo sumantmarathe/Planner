@@ -135,103 +135,171 @@ export class LocalStorageAdapter {
  * IndexedDB adapter for high-capacity local-first browser storage
  */
 export class IndexedDBStorageAdapter {
-  constructor(dbName = 'DayPlannerDB', storeName = 'activities', version = 2) {
+  constructor(dbName = 'DayPlannerDB', storeName = 'activities', version = 4) {
     this.dbName = dbName;
     this.storeName = storeName;
     this.version = version;
     this.db = null;
+    this.fallback = typeof localStorage !== 'undefined'
+      ? new LocalStorageAdapter(`dayplanner_${storeName}_v1`)
+      : new MemoryStorageAdapter();
+  }
+
+  _setupStores(db) {
+    if (!db.objectStoreNames.contains('activities')) {
+      const actStore = db.createObjectStore('activities', { keyPath: 'id' });
+      actStore.createIndex('date', 'date', { unique: false });
+      actStore.createIndex('priority', 'priority', { unique: false });
+      actStore.createIndex('completed', 'completed', { unique: false });
+    }
+    if (!db.objectStoreNames.contains('habits')) {
+      db.createObjectStore('habits', { keyPath: 'id' });
+    }
+    if (!db.objectStoreNames.contains('finance')) {
+      db.createObjectStore('finance', { keyPath: 'id' });
+    }
   }
 
   async _getDb() {
-    if (this.db) return this.db;
+    if (this.db) {
+      if (this.db.objectStoreNames.contains(this.storeName)) {
+        return this.db;
+      }
+      try { this.db.close(); } catch {}
+      this.db = null;
+    }
+
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open(this.dbName, this.version);
-      req.onupgradeneeded = (e) => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains('activities')) {
-          const actStore = db.createObjectStore('activities', { keyPath: 'id' });
-          actStore.createIndex('date', 'date', { unique: false });
-          actStore.createIndex('priority', 'priority', { unique: false });
-          actStore.createIndex('completed', 'completed', { unique: false });
-        }
-        if (!db.objectStoreNames.contains('habits')) {
-          db.createObjectStore('habits', { keyPath: 'id' });
-        }
+      const openReq = (version) => {
+        const req = indexedDB.open(this.dbName, version);
+        req.onupgradeneeded = (e) => {
+          this._setupStores(e.target.result);
+        };
+        req.onsuccess = (e) => {
+          const db = e.target.result;
+          // Self-healing migration: if the required store is missing, bump version to trigger onupgradeneeded
+          if (!db.objectStoreNames.contains(this.storeName)) {
+            const nextVer = (db.version || 1) + 1;
+            this.version = nextVer;
+            db.close();
+            openReq(nextVer);
+            return;
+          }
+          this.db = db;
+          resolve(this.db);
+        };
+        req.onerror = (e) => reject(e.target.error);
+        req.onblocked = () => {
+          console.warn(`IndexedDB database ${this.dbName} blocked during upgrade`);
+        };
       };
-      req.onsuccess = (e) => {
-        this.db = e.target.result;
-        resolve(this.db);
-      };
-      req.onerror = (e) => reject(e.target.error);
+
+      openReq(this.version);
     });
   }
 
   async getAll() {
-    const db = await this._getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, 'readonly');
-      const store = tx.objectStore(this.storeName);
-      const req = store.getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
-    });
+    try {
+      const db = await this._getDb();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, 'readonly');
+        const store = tx.objectStore(this.storeName);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    } catch (err) {
+      console.warn(`IndexedDB getAll failed for ${this.storeName}, falling back to LocalStorage:`, err);
+      return this.fallback.getAll();
+    }
   }
 
   async getById(id) {
-    const db = await this._getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, 'readonly');
-      const store = tx.objectStore(this.storeName);
-      const req = store.get(id);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error);
-    });
+    try {
+      const db = await this._getDb();
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, 'readonly');
+        const store = tx.objectStore(this.storeName);
+        const req = store.get(id);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+    } catch (err) {
+      console.warn(`IndexedDB getById failed for ${this.storeName}, falling back to LocalStorage:`, err);
+      return this.fallback.getById(id);
+    }
   }
 
   async save(item) {
-    const db = await this._getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, 'readwrite');
-      const store = tx.objectStore(this.storeName);
-      const req = store.put(item);
-      req.onsuccess = () => resolve(item);
-      req.onerror = () => reject(req.error);
-    });
+    try {
+      const db = await this._getDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, 'readwrite');
+        const store = tx.objectStore(this.storeName);
+        const req = store.put(item);
+        req.onsuccess = () => resolve(item);
+        req.onerror = () => reject(req.error);
+      });
+      try { await this.fallback.save(item); } catch {}
+      return item;
+    } catch (err) {
+      console.warn(`IndexedDB save failed for ${this.storeName}, falling back to LocalStorage:`, err);
+      return this.fallback.save(item);
+    }
   }
 
   async remove(id) {
-    const db = await this._getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, 'readwrite');
-      const store = tx.objectStore(this.storeName);
-      const req = store.delete(id);
-      req.onsuccess = () => resolve(true);
-      req.onerror = () => reject(req.error);
-    });
+    try {
+      const db = await this._getDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, 'readwrite');
+        const store = tx.objectStore(this.storeName);
+        const req = store.delete(id);
+        req.onsuccess = () => resolve(true);
+        req.onerror = () => reject(req.error);
+      });
+      try { await this.fallback.remove(id); } catch {}
+      return true;
+    } catch (err) {
+      console.warn(`IndexedDB remove failed for ${this.storeName}, falling back to LocalStorage:`, err);
+      return this.fallback.remove(id);
+    }
   }
 
   async clear() {
-    const db = await this._getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, 'readwrite');
-      const store = tx.objectStore(this.storeName);
-      const req = store.clear();
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
+    try {
+      const db = await this._getDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, 'readwrite');
+        const store = tx.objectStore(this.storeName);
+        const req = store.clear();
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+      try { await this.fallback.clear(); } catch {}
+    } catch (err) {
+      console.warn(`IndexedDB clear failed for ${this.storeName}, falling back to LocalStorage:`, err);
+      await this.fallback.clear();
+    }
   }
 
   async bulkSave(items) {
-    const db = await this._getDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(this.storeName, 'readwrite');
-      const store = tx.objectStore(this.storeName);
-      for (const item of items) {
-        store.put(item);
-      }
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
+    try {
+      const db = await this._getDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(this.storeName, 'readwrite');
+        const store = tx.objectStore(this.storeName);
+        for (const item of items) {
+          store.put(item);
+        }
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+      try { await this.fallback.bulkSave(items); } catch {}
+    } catch (err) {
+      console.warn(`IndexedDB bulkSave failed for ${this.storeName}, falling back to LocalStorage:`, err);
+      await this.fallback.bulkSave(items);
+    }
   }
 }
 
@@ -252,9 +320,9 @@ export function createPlannerStore(customActAdapter, customHabitAdapter, customF
 
   if (!actAdapter) {
     if (typeof indexedDB !== 'undefined') {
-      actAdapter = new IndexedDBStorageAdapter('DayPlannerDB', 'activities', 3);
-      habitAdapter = new IndexedDBStorageAdapter('DayPlannerDB', 'habits', 3);
-      financeAdapter = new IndexedDBStorageAdapter('DayPlannerDB', 'finance', 3);
+      actAdapter = new IndexedDBStorageAdapter('DayPlannerDB', 'activities', 4);
+      habitAdapter = new IndexedDBStorageAdapter('DayPlannerDB', 'habits', 4);
+      financeAdapter = new IndexedDBStorageAdapter('DayPlannerDB', 'finance', 4);
     } else if (typeof localStorage !== 'undefined') {
       actAdapter = new LocalStorageAdapter('dayplanner_activities_v1');
       habitAdapter = new LocalStorageAdapter('dayplanner_habits_v1');

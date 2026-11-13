@@ -332,3 +332,4 @@ export function formatRupees(amount) {
 
   return `${sign}₹${result}`;
 }
+

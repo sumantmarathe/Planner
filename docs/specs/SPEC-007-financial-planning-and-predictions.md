@@ -123,3 +123,4 @@ export interface FinanceForecastSummary {
 | Day of month > 31 or < 1 | Clamped to valid range 1-31 | `NORMALIZED_DATE` |
 | Leap year / 28-30 day months | If payment day is 31 and month has 30 days, payments occur on last day of month | `MONTH_END_ADJUSTED` |
 | Expense > Income | Net savings is negative; UI visually warns of projected shortfall in red | `DEFICIT_WARNING` |
+

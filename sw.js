@@ -2,7 +2,7 @@
  * DayPlanner Offline Service Worker (PWA Cache)
  */
 
-const CACHE_NAME = 'dayplanner-v3';
+const CACHE_NAME = 'dayplanner-v4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

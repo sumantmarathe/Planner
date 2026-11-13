@@ -256,3 +256,4 @@ export function generateCategoryDonutSvg(categoryTotals = {}, size = 220) {
     </svg>
   `;
 }
+

@@ -58,3 +58,4 @@ test('Finance Store Integration: CRUD lifecycle and prediction calculation', asy
   const remaining = await store.getAllFinanceRecords();
   assert.equal(remaining.length, 1);
 });
+

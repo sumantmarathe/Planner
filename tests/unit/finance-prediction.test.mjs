@@ -149,3 +149,4 @@ test('Finance Prediction: handles non-monthly periodicity and active date bounds
   assert.equal(m4.totalIncome, 120000);
   assert.equal(m4.totalExpense, 0);
 });
+

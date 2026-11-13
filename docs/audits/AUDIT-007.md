@@ -4,8 +4,8 @@ spec_id: SPEC-007
 verdict: PASSED
 timestamp: 2026-11-13T19:35:00Z
 summary:
-  total_tests: 29
-  passed: 29
+  total_tests: 31
+  passed: 31
   failed: 0
   regressions: 0
   lint_clean: true
@@ -17,7 +17,7 @@ summary:
 - Suite: `tests/unit/*.test.mjs`, `tests/integration/*.test.mjs`
 - Test Runner: Node.js v22 Native Test Runner (`node:test`)
 - Exit Code: `0`
-- Pass Rate: `100%` (29/29 passed, 0 regressions)
+- Pass Rate: `100%` (31/31 passed, 0 regressions)
 
 ## Requirements & Invariant Traceability
 - [x] **FR-01 (Isolated Navigation Grouping)**: Top navigation bar clearly separated into:
@@ -39,11 +39,12 @@ summary:
   - `generateCategoryDonutSvg`: Proportional donut chart showing breakdown of recurring expenses by category.
   - Zero external libraries or CDNs: 100% offline, lightweight, responsive vector graphics.
 - [x] **FR-05 (Confidential Storage & Sync Integration)**:
-  - Persisted locally in IndexedDB / LocalStorage under `dayplanner_finance_v1`.
+  - Persisted locally in IndexedDB / LocalStorage under `dayplanner_finance_v1` with automatic self-healing schema migration (v4) and graceful LocalStorage fallback.
   - Integrated into `exportData` and `importData` backup lifecycle.
   - Encapsulated into confidential Google Drive `appDataFolder` sync (`financeRecords`).
 
 ## Dual-Target Parity & Production Verification
-- **PWA Production Bundle**: `sw.js` and `scripts/build-pwa.mjs` updated to cache `finance.mjs` and `finance-charts.mjs` under cache key `dayplanner-v3`.
+- **PWA Production Bundle**: `sw.js` and `scripts/build-pwa.mjs` updated to cache `finance.mjs` and `finance-charts.mjs` under cache key `dayplanner-v4`.
 - **Android Native Assets**: Synced to `android/app/src/main/assets/` via `scripts/build-android.mjs`.
 - **Verdict**: `PASSED`
+
