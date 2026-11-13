@@ -65,3 +65,4 @@ test('Activity Model: toggleActivityCompletion toggles state and updates timesta
   assert.equal(undone.completed, false);
   assert.equal(undone.completedAt, null);
 });
+

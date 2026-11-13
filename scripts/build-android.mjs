@@ -42,3 +42,4 @@ if (fs.existsSync(gradlewFile)) {
   console.log('Android assets packaged. Ready for Android Studio / Capacitor build.');
   console.log('To generate AAB for Google Play Console: open the "android" folder in Android Studio or run "npx cap sync android && cd android && ./gradlew bundleRelease".');
 }
+

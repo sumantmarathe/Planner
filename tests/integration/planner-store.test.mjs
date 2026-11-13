@@ -75,3 +75,4 @@ test('Planner Store: export and import data preserves state and rejects invalid 
   assert.equal(importedList.length, 1);
   assert.equal(importedList[0].title, 'Backup Task');
 });
+

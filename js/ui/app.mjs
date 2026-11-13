@@ -701,3 +701,4 @@ if (typeof document !== 'undefined') {
     window.dayPlannerApp.render();
   });
 }
+

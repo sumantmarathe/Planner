@@ -34,3 +34,4 @@ summary:
 - **Offline Resilience**: Clean. No external tracking, analytics, or remote API calls. All user data stays on client device.
 - **Data Protection**: Corrupt JSON imports safely rejected without database destruction.
 - **Verdict**: `PASSED`
+

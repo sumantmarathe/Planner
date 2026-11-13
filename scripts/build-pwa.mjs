@@ -35,3 +35,4 @@ console.log('\nRunning automated test suite...');
 execSync('npm test', { stdio: 'inherit' });
 
 console.log('\n[SUCCESS] PWA bundle verified and ready for GitHub Pages deployment.');
+

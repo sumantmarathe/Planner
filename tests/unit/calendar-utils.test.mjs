@@ -62,3 +62,4 @@ test('Calendar Utils: filterUntickedTasks extracts pending tasks with categoriza
   const upcoming = pending.find(p => p.id === '4');
   assert.equal(upcoming.statusCategory, 'UPCOMING');
 });
+

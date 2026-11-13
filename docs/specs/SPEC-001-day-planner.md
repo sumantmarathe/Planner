@@ -90,3 +90,4 @@ export interface PlannerStore {
 | Corrupt or invalid JSON import | Abort transaction, preserve existing database intact | `ERR_IMPORT_CORRUPT` |
 | Storage quota exceeded | Notify user, provide instant JSON export link | `ERR_STORAGE_QUOTA` |
 | Offline network state | Application continues operating without network warning | `OFFLINE_NORMAL` |
+

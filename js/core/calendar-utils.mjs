@@ -162,3 +162,4 @@ export function filterUntickedTasks(activities, referenceDateIso = getTodayISO()
     return a.date.localeCompare(b.date);
   });
 }
+

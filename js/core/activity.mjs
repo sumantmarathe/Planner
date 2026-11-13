@@ -103,3 +103,4 @@ export function toggleActivityCompletion(activity) {
     updatedAt: now
   };
 }
+

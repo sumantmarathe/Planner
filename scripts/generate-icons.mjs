@@ -71,3 +71,4 @@ const iconsDir = path.resolve('icons');
 fs.writeFileSync(path.join(iconsDir, 'icon-192.png'), createPng(192, 192, 99, 102, 241));
 fs.writeFileSync(path.join(iconsDir, 'icon-512.png'), createPng(512, 512, 79, 70, 229));
 console.log('PNG Icons successfully generated.');
+
