@@ -27,14 +27,12 @@ invariants:
   - Clicking `[+ Add Task]` opens the Task modal allowing users to create or edit tasks with: Title, Date (optional/scheduled), Time slot (optional), Priority (P1-P4), and Description.
   - Keyboard shortcut <kbd>N</kbd> when on the Tasks tab (or globally) creates a Task in the Tasks tab.
 
-- **FR-03 (Planner Fetches Tasks & Habits)**:
+- **FR-03 (Planner Automatically Fetches Tasks & Habits)**:
   - The Planner (Day, Week, Month calendar views) automatically fetches and displays:
-    1. Tasks scheduled for the given timeframe from the Tasks store.
+    1. Tasks scheduled for the given timeframe from the Tasks store (including active/overdue unticked tasks when viewing Today).
     2. Habits scheduled for the given timeframe expanded by recurrence rules from the Habits store.
-  - The Day View includes a dedicated action: `[Fetch from Tasks]` (`#btn-fetch-tasks`).
-  - Clicking `[Fetch from Tasks]` opens a picker listing all pending/unticked tasks from the Tasks tab.
-  - Selecting an unticked task schedules it for the currently viewed date (and optional time slot) directly onto the day's timeline.
-  - If a day is empty, the empty state displays quick actions to "Fetch from Tasks Backlog" or jump to the Tasks / Habits tabs.
+  - Sourcing is 100% automatic: no manual "Fetch" buttons, dialogs, or intermediate modals are required.
+  - If a day has no scheduled tasks or habits, the empty state displays clean navigation links to manage tasks in the Tasks tab or habits in the Habits tab.
 
 - **FR-04 (Filter Bar Cleanup - Remove Non-Functional "General" Dropdown)**:
   - Remove the non-functional `<select id="category-filter">` which defaulted to "General" and did nothing useful.
@@ -67,3 +65,4 @@ export interface PlannerStoreExtensions {
 | User tries to "Fetch from Tasks" when backlog is empty | Display clean empty state with button to go to Tasks tab to create one | `UI_FETCH_NO_PENDING_TASKS` |
 | User schedules backlog task for today | Task `date` updated to selected date, immediately re-renders on Day view | `TASK_SCHEDULED_FOR_DATE` |
 | Filter by "Habits Only" on Day view | Only habit occurrences for that day are shown | `VIEW_FILTER_APPLIED` |
+

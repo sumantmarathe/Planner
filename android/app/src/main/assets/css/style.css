@@ -902,49 +902,6 @@ body {
   font-weight: 600;
 }
 
-.fetch-task-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-}
-
-.fetch-task-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1rem;
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
-  gap: 1rem;
-}
-
-.fetch-task-item:hover {
-  border-color: var(--border-active);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.fetch-task-info {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  flex: 1;
-}
-
-.fetch-task-title {
-  font-weight: 600;
-  font-size: 0.95rem;
-  color: var(--text-main);
-}
-
-.fetch-task-meta {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
 .plan-subnav {
   display: inline-flex;
   align-items: center;

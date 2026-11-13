@@ -407,7 +407,11 @@ export function createPlannerStore(customActAdapter, customHabitAdapter) {
       }
 
       if (options.date) {
-        items = items.filter(a => a.date === options.date);
+        if (options.includeOverdueForToday && options.date === getTodayISO()) {
+          items = items.filter(a => a.date === options.date || (!a.completed && a.date < options.date && !a.isHabit));
+        } else {
+          items = items.filter(a => a.date === options.date);
+        }
       }
       if (options.startDate) {
         items = items.filter(a => a.date >= options.startDate);

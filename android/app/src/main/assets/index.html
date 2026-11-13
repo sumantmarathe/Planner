@@ -118,10 +118,6 @@
       <div class="day-view-container">
         <div class="day-view-header-bar">
           <span class="day-schedule-count" id="day-schedule-count">0 items scheduled</span>
-          <button class="btn btn-secondary" id="btn-fetch-tasks" title="Fetch and schedule a task from your backlog">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
-            <span>Fetch from Tasks</span>
-          </button>
         </div>
         <div class="day-activities-list" id="day-activities-list"></div>
       </div>
@@ -272,28 +268,6 @@
           <button type="submit" class="btn btn-primary" id="btn-save-activity">Save Task</button>
         </div>
       </form>
-    </div>
-  </div>
-
-  <!-- Fetch Task to Plan Modal -->
-  <div class="modal-backdrop" id="fetch-task-modal">
-    <div class="modal-dialog">
-      <div class="modal-header">
-        <h3 class="modal-title" id="fetch-task-modal-title">Fetch Task to Plan</h3>
-        <button class="modal-close-btn modal-close-trigger">&times;</button>
-      </div>
-      <div class="modal-body">
-        <p style="margin-bottom: 1rem; color: var(--text-muted); font-size: 0.875rem;">
-          Select a pending task from your backlog to schedule onto this date's plan:
-        </p>
-        <div id="fetch-task-list" class="fetch-task-list" style="max-height: 340px; overflow-y: auto;">
-          <!-- Dynamically populated -->
-        </div>
-      </div>
-      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
-        <button type="button" class="btn btn-secondary" id="btn-goto-tasks-modal">Manage in Tasks Tab</button>
-        <button type="button" class="btn btn-secondary modal-close-trigger">Close</button>
-      </div>
     </div>
   </div>
 

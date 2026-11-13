@@ -68,16 +68,12 @@ export class DayPlannerApp {
 
     // Day & Task Elements
     this.dayScheduleCount = document.getElementById('day-schedule-count');
-    this.btnFetchTasks = document.getElementById('btn-fetch-tasks');
     this.btnNewTask = document.getElementById('btn-new-task');
 
     // Modals
     this.activityModal = document.getElementById('activity-modal');
     this.activityForm = document.getElementById('activity-form');
     this.modalTitle = document.getElementById('modal-title');
-    this.fetchTaskModal = document.getElementById('fetch-task-modal');
-    this.fetchTaskList = document.getElementById('fetch-task-list');
-    this.btnGotoTasksModal = document.getElementById('btn-goto-tasks-modal');
     this.backupModal = document.getElementById('backup-modal');
     this.gdriveModal = document.getElementById('gdrive-modal');
 
@@ -160,15 +156,6 @@ export class DayPlannerApp {
     // Task Actions
     this.btnNewTask?.addEventListener('click', () => {
       this.openActivityModal({ date: this.selectedDate });
-    });
-
-    this.btnFetchTasks?.addEventListener('click', () => {
-      this.openFetchTaskModal();
-    });
-
-    this.btnGotoTasksModal?.addEventListener('click', () => {
-      this.closeModals();
-      this.switchView('tasks');
     });
 
     // Open Add Habit Modal
@@ -605,7 +592,10 @@ export class DayPlannerApp {
     const container = document.getElementById('day-activities-list');
     container.innerHTML = '';
 
-    const dayActivities = await this.store.queryActivities({ date: this.selectedDate });
+    const dayActivities = await this.store.queryActivities({
+      date: this.selectedDate,
+      includeOverdueForToday: true
+    });
     const filtered = this.filterActivities(dayActivities);
 
     if (this.dayScheduleCount) {
@@ -626,82 +616,20 @@ export class DayPlannerApp {
             </svg>
           </div>
           <h3>No tasks or habits scheduled for this day</h3>
-          <p style="margin-top: 0.5rem; font-size: 0.875rem;">Fetch pending tasks from your backlog or explore your habits.</p>
+          <p style="margin-top: 0.5rem; font-size: 0.875rem;">Tasks and habits are automatically fetched from their respective tabs.</p>
           <div style="display: flex; gap: 0.75rem; justify-content: center; margin-top: 1rem; flex-wrap: wrap;">
-            <button class="btn btn-primary" id="btn-empty-fetch-tasks">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
-              <span>Fetch from Tasks</span>
-            </button>
+            <button class="btn btn-secondary" id="btn-empty-goto-tasks">Go to Tasks</button>
             <button class="btn btn-secondary" id="btn-empty-goto-habits">Go to Habits</button>
           </div>
         </div>
       `;
-      container.querySelector('#btn-empty-fetch-tasks')?.addEventListener('click', () => this.openFetchTaskModal());
+      container.querySelector('#btn-empty-goto-tasks')?.addEventListener('click', () => this.switchView('tasks'));
       container.querySelector('#btn-empty-goto-habits')?.addEventListener('click', () => this.switchView('habits'));
       return;
     }
 
     filtered.forEach(act => {
       container.appendChild(this.renderActivityCard(act));
-    });
-  }
-
-  async openFetchTaskModal() {
-    if (!this.fetchTaskModal || !this.fetchTaskList) return;
-    const titleEl = document.getElementById('fetch-task-modal-title');
-    if (titleEl) {
-      const d = parseDateISO(this.selectedDate);
-      const formatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      titleEl.textContent = `Fetch Task to Plan (${formatted})`;
-    }
-
-    this.fetchTaskList.innerHTML = '<div style="text-align:center; padding: 1.5rem; color: var(--text-muted);">Loading pending tasks...</div>';
-    this.fetchTaskModal.classList.add('open');
-
-    const pendingTasks = await this.store.getPendingTasks(this.selectedDate);
-
-    if (pendingTasks.length === 0) {
-      this.fetchTaskList.innerHTML = `
-        <div class="empty-state" style="padding: 1.5rem 1rem;">
-          <p style="color: var(--text-muted); font-size: 0.9rem;">No pending tasks found in your backlog.</p>
-          <button class="btn btn-primary" id="btn-create-task-empty" style="margin-top: 0.75rem;">
-            + Create New Task
-          </button>
-        </div>
-      `;
-      this.fetchTaskList.querySelector('#btn-create-task-empty')?.addEventListener('click', () => {
-        this.closeModals();
-        this.openActivityModal({ date: this.selectedDate });
-      });
-      return;
-    }
-
-    this.fetchTaskList.innerHTML = '';
-    pendingTasks.forEach(task => {
-      const itemEl = document.createElement('div');
-      itemEl.className = 'fetch-task-item';
-      itemEl.innerHTML = `
-        <div class="fetch-task-info">
-          <span class="fetch-task-title">${this.escapeHTML(task.title)}</span>
-          <div class="fetch-task-meta">
-            <span class="badge-priority ${task.priority}">${PRIORITY_LABELS[task.priority] || task.priority}</span>
-            ${task.date ? `<span>Target: ${task.date}</span>` : ''}
-          </div>
-        </div>
-        <button class="btn btn-secondary btn-sm" data-task-id="${task.id}">
-          Plan for ${this.selectedDate === getTodayISO() ? 'Today' : this.selectedDate}
-        </button>
-      `;
-
-      itemEl.querySelector('button').addEventListener('click', async () => {
-        await this.store.scheduleTaskForDate(task.id, this.selectedDate);
-        this.closeModals();
-        this.showToast(`"${task.title}" scheduled for ${this.selectedDate}`);
-        this.queueGoogleDriveSync();
-        this.render();
-      });
-
-      this.fetchTaskList.appendChild(itemEl);
     });
   }
 
@@ -1250,7 +1178,6 @@ export class DayPlannerApp {
 
   closeModals() {
     this.activityModal.classList.remove('open');
-    this.fetchTaskModal?.classList.remove('open');
     this.backupModal.classList.remove('open');
     this.gdriveModal.classList.remove('open');
     this.habitModal?.classList.remove('open');

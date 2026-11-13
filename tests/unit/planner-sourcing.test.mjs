@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createPlannerStore } from '../../js/core/store.mjs';
 import { PRIORITIES } from '../../js/core/activity.mjs';
 import { RECURRENCE_FREQUENCIES, HABIT_CATEGORIES } from '../../js/core/habit.mjs';
+import { getTodayISO } from '../../js/core/calendar-utils.mjs';
 
 test('Planner Sourcing: scheduleTaskForDate assigns backlog task to specific date and time', async () => {
   const store = createPlannerStore();
@@ -66,4 +67,21 @@ test('Planner Sourcing: planner queries fetch both tasks and habits with correct
   const habitItem = items.find(i => i.habitId === habit.id);
   assert.ok(habitItem, 'Habit occurrence must be returned');
   assert.equal(habitItem.isHabit, true);
+});
+
+test('Planner Sourcing: automatically includes overdue unticked tasks when querying today', async () => {
+  const store = createPlannerStore();
+  const today = getTodayISO();
+
+  // Create an overdue unticked task from past date
+  const overdueTask = await store.createActivity({
+    title: 'Pay Electricity Bill',
+    priority: PRIORITIES.P1_URGENT,
+    date: '2026-11-01'
+  });
+
+  // Query activities for today with includeOverdueForToday
+  const todayItems = await store.queryActivities({ date: today, includeOverdueForToday: true });
+  const found = todayItems.find(item => item.id === overdueTask.id);
+  assert.ok(found, 'Overdue unticked task must automatically be fetched into today plan');
 });
