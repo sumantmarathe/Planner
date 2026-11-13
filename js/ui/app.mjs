@@ -33,7 +33,7 @@ export class DayPlannerApp {
     this.selectedDate = getTodayISO();
     this.searchQuery = '';
     this.selectedPriorityFilter = '';
-    this.selectedCategoryFilter = '';
+    this.selectedTypeFilter = ''; // '' | 'task' | 'habit'
     this.selectedHabitCategory = 'ALL';
     this.editingActivityId = null;
     this.editingHabitId = null;
@@ -64,12 +64,20 @@ export class DayPlannerApp {
 
     this.searchInput = document.getElementById('search-input');
     this.priorityFilter = document.getElementById('priority-filter');
-    this.categoryFilter = document.getElementById('category-filter');
+    this.typeFilter = document.getElementById('type-filter');
+
+    // Day & Task Elements
+    this.dayScheduleCount = document.getElementById('day-schedule-count');
+    this.btnFetchTasks = document.getElementById('btn-fetch-tasks');
+    this.btnNewTask = document.getElementById('btn-new-task');
 
     // Modals
     this.activityModal = document.getElementById('activity-modal');
     this.activityForm = document.getElementById('activity-form');
     this.modalTitle = document.getElementById('modal-title');
+    this.fetchTaskModal = document.getElementById('fetch-task-modal');
+    this.fetchTaskList = document.getElementById('fetch-task-list');
+    this.btnGotoTasksModal = document.getElementById('btn-goto-tasks-modal');
     this.backupModal = document.getElementById('backup-modal');
     this.gdriveModal = document.getElementById('gdrive-modal');
 
@@ -139,19 +147,28 @@ export class DayPlannerApp {
       this.render();
     });
 
-    this.priorityFilter.addEventListener('change', (e) => {
+    this.priorityFilter?.addEventListener('change', (e) => {
       this.selectedPriorityFilter = e.target.value;
       this.render();
     });
 
-    this.categoryFilter.addEventListener('change', (e) => {
-      this.selectedCategoryFilter = e.target.value;
+    this.typeFilter?.addEventListener('change', (e) => {
+      this.selectedTypeFilter = e.target.value;
       this.render();
     });
 
-    // Open Add Activity Modal
-    document.getElementById('btn-new-activity').addEventListener('click', () => {
-      this.openActivityModal();
+    // Task Actions
+    this.btnNewTask?.addEventListener('click', () => {
+      this.openActivityModal({ date: this.selectedDate });
+    });
+
+    this.btnFetchTasks?.addEventListener('click', () => {
+      this.openFetchTaskModal();
+    });
+
+    this.btnGotoTasksModal?.addEventListener('click', () => {
+      this.closeModals();
+      this.switchView('tasks');
     });
 
     // Open Add Habit Modal
@@ -449,7 +466,6 @@ export class DayPlannerApp {
   async render() {
     this.updateHeaderDate();
     await this.updatePendingBadge();
-    await this.populateCategoryFilter();
 
     switch (this.currentView) {
       case 'day':
@@ -478,35 +494,21 @@ export class DayPlannerApp {
     }
   }
 
-  async populateCategoryFilter() {
-    const all = await this.store.queryActivities();
-    const categories = Array.from(new Set(all.map(a => a.category || 'General'))).sort();
-    
-    const currentVal = this.categoryFilter.value;
-    this.categoryFilter.innerHTML = '<option value="">All Categories</option>';
-    categories.forEach(cat => {
-      const opt = document.createElement('option');
-      opt.value = cat;
-      opt.textContent = cat;
-      if (cat === currentVal) opt.selected = true;
-      this.categoryFilter.appendChild(opt);
-    });
-  }
-
   filterActivities(activities) {
     let list = activities;
     if (this.selectedPriorityFilter) {
       list = list.filter(a => a.priority === this.selectedPriorityFilter);
     }
-    if (this.selectedCategoryFilter) {
-      list = list.filter(a => (a.category || 'General').toLowerCase() === this.selectedCategoryFilter.toLowerCase());
+    if (this.selectedTypeFilter === 'task') {
+      list = list.filter(a => !a.isHabit);
+    } else if (this.selectedTypeFilter === 'habit') {
+      list = list.filter(a => a.isHabit);
     }
     if (this.searchQuery) {
       const q = this.searchQuery.toLowerCase();
       list = list.filter(a =>
         a.title.toLowerCase().includes(q) ||
-        (a.description && a.description.toLowerCase().includes(q)) ||
-        (a.category && a.category.toLowerCase().includes(q))
+        (a.description && a.description.toLowerCase().includes(q))
       );
     }
     return list;
@@ -549,19 +551,19 @@ export class DayPlannerApp {
             </svg>
             ${timeString}
           </span>
-          <span class="activity-tag">${this.escapeHTML(activity.category || 'General')}</span>
+          <span class="activity-tag ${activity.isHabit ? 'habit-tag' : 'task-tag'}">${activity.isHabit ? '🌱 Habit' : 'Task'}</span>
           <span class="activity-time">${activity.date}</span>
         </div>
       </div>
       <div class="activity-actions">
         ${activity.isHabit ? '' : `
-        <button class="action-icon-btn edit" title="Edit activity">
+        <button class="action-icon-btn edit" title="Edit task">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
           </svg>
         </button>
-        <button class="action-icon-btn delete" title="Delete activity">
+        <button class="action-icon-btn delete" title="Delete task">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -587,9 +589,9 @@ export class DayPlannerApp {
     // Delete handler
     card.querySelector('.action-icon-btn.delete')?.addEventListener('click', async (e) => {
       e.stopPropagation();
-      if (confirm(`Delete activity "${activity.title}"?`)) {
+      if (confirm(`Delete task "${activity.title}"?`)) {
         await this.store.deleteActivity(activity.id);
-        this.showToast('Activity deleted');
+        this.showToast('Task deleted');
         this.queueGoogleDriveSync();
         this.render();
       }
@@ -606,6 +608,12 @@ export class DayPlannerApp {
     const dayActivities = await this.store.queryActivities({ date: this.selectedDate });
     const filtered = this.filterActivities(dayActivities);
 
+    if (this.dayScheduleCount) {
+      const taskCount = filtered.filter(a => !a.isHabit).length;
+      const habitCount = filtered.filter(a => a.isHabit).length;
+      this.dayScheduleCount.textContent = `${filtered.length} item${filtered.length === 1 ? '' : 's'} (${taskCount} task${taskCount === 1 ? '' : 's'}, ${habitCount} habit${habitCount === 1 ? '' : 's'})`;
+    }
+
     if (filtered.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
@@ -617,15 +625,83 @@ export class DayPlannerApp {
               <line x1="3" y1="10" x2="21" y2="10"></line>
             </svg>
           </div>
-          <h3>No activities planned for this day</h3>
-          <p style="margin-top: 0.5rem; font-size: 0.875rem;">Click "+ New Activity" or press <kbd>N</kbd> to schedule something.</p>
+          <h3>No tasks or habits scheduled for this day</h3>
+          <p style="margin-top: 0.5rem; font-size: 0.875rem;">Fetch pending tasks from your backlog or explore your habits.</p>
+          <div style="display: flex; gap: 0.75rem; justify-content: center; margin-top: 1rem; flex-wrap: wrap;">
+            <button class="btn btn-primary" id="btn-empty-fetch-tasks">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
+              <span>Fetch from Tasks</span>
+            </button>
+            <button class="btn btn-secondary" id="btn-empty-goto-habits">Go to Habits</button>
+          </div>
         </div>
       `;
+      container.querySelector('#btn-empty-fetch-tasks')?.addEventListener('click', () => this.openFetchTaskModal());
+      container.querySelector('#btn-empty-goto-habits')?.addEventListener('click', () => this.switchView('habits'));
       return;
     }
 
     filtered.forEach(act => {
       container.appendChild(this.renderActivityCard(act));
+    });
+  }
+
+  async openFetchTaskModal() {
+    if (!this.fetchTaskModal || !this.fetchTaskList) return;
+    const titleEl = document.getElementById('fetch-task-modal-title');
+    if (titleEl) {
+      const d = parseDateISO(this.selectedDate);
+      const formatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      titleEl.textContent = `Fetch Task to Plan (${formatted})`;
+    }
+
+    this.fetchTaskList.innerHTML = '<div style="text-align:center; padding: 1.5rem; color: var(--text-muted);">Loading pending tasks...</div>';
+    this.fetchTaskModal.classList.add('open');
+
+    const pendingTasks = await this.store.getPendingTasks(this.selectedDate);
+
+    if (pendingTasks.length === 0) {
+      this.fetchTaskList.innerHTML = `
+        <div class="empty-state" style="padding: 1.5rem 1rem;">
+          <p style="color: var(--text-muted); font-size: 0.9rem;">No pending tasks found in your backlog.</p>
+          <button class="btn btn-primary" id="btn-create-task-empty" style="margin-top: 0.75rem;">
+            + Create New Task
+          </button>
+        </div>
+      `;
+      this.fetchTaskList.querySelector('#btn-create-task-empty')?.addEventListener('click', () => {
+        this.closeModals();
+        this.openActivityModal({ date: this.selectedDate });
+      });
+      return;
+    }
+
+    this.fetchTaskList.innerHTML = '';
+    pendingTasks.forEach(task => {
+      const itemEl = document.createElement('div');
+      itemEl.className = 'fetch-task-item';
+      itemEl.innerHTML = `
+        <div class="fetch-task-info">
+          <span class="fetch-task-title">${this.escapeHTML(task.title)}</span>
+          <div class="fetch-task-meta">
+            <span class="badge-priority ${task.priority}">${PRIORITY_LABELS[task.priority] || task.priority}</span>
+            ${task.date ? `<span>Target: ${task.date}</span>` : ''}
+          </div>
+        </div>
+        <button class="btn btn-secondary btn-sm" data-task-id="${task.id}">
+          Plan for ${this.selectedDate === getTodayISO() ? 'Today' : this.selectedDate}
+        </button>
+      `;
+
+      itemEl.querySelector('button').addEventListener('click', async () => {
+        await this.store.scheduleTaskForDate(task.id, this.selectedDate);
+        this.closeModals();
+        this.showToast(`"${task.title}" scheduled for ${this.selectedDate}`);
+        this.queueGoogleDriveSync();
+        this.render();
+      });
+
+      this.fetchTaskList.appendChild(itemEl);
     });
   }
 
@@ -766,8 +842,15 @@ export class DayPlannerApp {
           </div>
           <h3>All caught up!</h3>
           <p style="margin-top: 0.5rem; font-size: 0.875rem;">No unticked tasks remaining in your backlog.</p>
+          <button class="btn btn-primary" id="btn-empty-add-task" style="margin-top: 1rem;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <span>Add Task</span>
+          </button>
         </div>
       `;
+      container.querySelector('#btn-empty-add-task')?.addEventListener('click', () => {
+        this.openActivityModal({ date: getTodayISO() });
+      });
       return;
     }
 
@@ -1103,14 +1186,13 @@ export class DayPlannerApp {
 
   openActivityModal(preset = {}) {
     this.editingActivityId = preset.id || null;
-    this.modalTitle.textContent = this.editingActivityId ? 'Edit Activity' : 'Plan New Activity';
+    this.modalTitle.textContent = this.editingActivityId ? 'Edit Task' : 'Create New Task';
 
     document.getElementById('form-activity-id').value = preset.id || '';
     document.getElementById('form-title').value = preset.title || '';
     document.getElementById('form-date').value = preset.date || this.selectedDate;
     document.getElementById('form-start-time').value = preset.startTime || '';
     document.getElementById('form-end-time').value = preset.endTime || '';
-    document.getElementById('form-category').value = preset.category || 'General';
     document.getElementById('form-description').value = preset.description || '';
 
     const priority = preset.priority || PRIORITIES.P3_MEDIUM;
@@ -1128,7 +1210,6 @@ export class DayPlannerApp {
     const date = document.getElementById('form-date').value;
     const startTime = document.getElementById('form-start-time').value || null;
     const endTime = document.getElementById('form-end-time').value || null;
-    const category = document.getElementById('form-category').value.trim() || 'General';
     const description = document.getElementById('form-description').value.trim();
     const priority = document.querySelector('input[name="priority"]:checked')?.value || PRIORITIES.P3_MEDIUM;
 
@@ -1139,29 +1220,27 @@ export class DayPlannerApp {
           date,
           startTime,
           endTime,
-          category,
           description,
           priority
         });
-        this.showToast('Activity updated');
+        this.showToast('Task updated');
       } else {
         await this.store.createActivity({
           title,
           date,
           startTime,
           endTime,
-          category,
           description,
           priority
         });
-        this.showToast('Activity scheduled');
+        this.showToast('Task created');
       }
 
       this.closeModals();
       this.queueGoogleDriveSync();
       this.render();
     } catch (err) {
-      alert(`Error saving activity: ${err.message}`);
+      alert(`Error saving task: ${err.message}`);
     }
   }
 
@@ -1171,6 +1250,7 @@ export class DayPlannerApp {
 
   closeModals() {
     this.activityModal.classList.remove('open');
+    this.fetchTaskModal?.classList.remove('open');
     this.backupModal.classList.remove('open');
     this.gdriveModal.classList.remove('open');
     this.habitModal?.classList.remove('open');

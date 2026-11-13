@@ -66,3 +66,4 @@ export interface PlannerStore {
 | Querying Tasks backlog | Filter out any item where `isHabit === true` or `habitId` is present | `FILTER_NO_HABIT_IN_TASKS` |
 | Switching to Plan tab | Restores last active sub-view (`day`, `week`, or `month`) | `PLAN_SUBVIEW_RESTORED` |
 | Toggling habit on Plan calendar | Toggles date in habit record, preserves task backlog intact | `HABIT_DATE_TOGGLED` |
+

@@ -325,6 +325,22 @@ export function createPlannerStore(customActAdapter, customHabitAdapter) {
       return toggled;
     },
 
+    async scheduleTaskForDate(taskId, targetDate, timeSlot = {}) {
+      const task = await actAdapter.getById(taskId);
+      if (!task) {
+        throw new Error(`ERR_TASK_NOT_FOUND: Task ${taskId} does not exist`);
+      }
+      const updated = {
+        ...task,
+        date: targetDate,
+        startTime: timeSlot.startTime !== undefined ? timeSlot.startTime : task.startTime,
+        endTime: timeSlot.endTime !== undefined ? timeSlot.endTime : task.endTime,
+        updatedAt: new Date().toISOString()
+      };
+      await actAdapter.save(updated);
+      return updated;
+    },
+
     async deleteActivity(id) {
       if (id.startsWith('hab_act__')) return false;
       return await actAdapter.remove(id);
@@ -352,7 +368,11 @@ export function createPlannerStore(customActAdapter, customHabitAdapter) {
     },
 
     async queryActivities(options = {}) {
-      let items = await actAdapter.getAll();
+      let rawItems = await actAdapter.getAll();
+      let items = rawItems.map(a => ({
+        ...a,
+        isHabit: false
+      }));
       const includeHabits = options.includeHabits !== false;
 
       if (includeHabits) {

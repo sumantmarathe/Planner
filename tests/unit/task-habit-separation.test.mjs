@@ -28,7 +28,7 @@ test('Task vs Habit Separation: getPendingTasks excludes habits from task backlo
   assert.equal(pendingTasks.length, 1);
   assert.equal(pendingTasks[0].id, task.id);
   assert.equal(pendingTasks[0].title, 'Prepare Presentation Slides');
-  assert.equal(pendingTasks[0].isHabit, undefined);
+  assert.ok(!pendingTasks[0].isHabit, 'Task must not be a habit');
 
   // 4. Query calendar activities: MUST contain both task and expanded habit
   const calendarActivities = await store.queryActivities({ date: '2026-11-13', includeHabits: true });
@@ -41,3 +41,4 @@ test('Task vs Habit Separation: getPendingTasks excludes habits from task backlo
   assert.equal(tasksOnly.length, 1);
   assert.equal(tasksOnly[0].id, task.id);
 });
+
