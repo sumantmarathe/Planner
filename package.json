@@ -1,0 +1,16 @@
+{
+  "name": "dayplanner",
+  "version": "1.0.0",
+  "description": "Premium dual-target day planner for PC (GitHub Pages) and Android (Play Console)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/unit/*.test.mjs tests/integration/*.test.mjs",
+    "test:unit": "node --test tests/unit/*.test.mjs",
+    "test:integration": "node --test tests/integration/*.test.mjs",
+    "build:pwa": "node scripts/build-pwa.mjs",
+    "build:android": "node scripts/build-android.mjs"
+  },
+  "keywords": ["planner", "calendar", "pwa", "android", "offline-first", "local-first"],
+  "author": "Development Team",
+  "license": "MIT"
+}

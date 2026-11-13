@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#4f46e5" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="#0a0f1d"/>
+  <rect x="32" y="32" width="448" height="448" rx="112" fill="url(#bgGrad)" filter="url(#glow)"/>
+  
+  <!-- Calendar Body -->
+  <rect x="96" y="128" width="320" height="288" rx="32" fill="#0f172a" opacity="0.95"/>
+  <rect x="96" y="128" width="320" height="80" rx="32" fill="#1e1b4b"/>
+  <rect x="96" y="180" width="320" height="28" fill="#1e1b4b"/>
+  
+  <!-- Calendar Rings / Hooks -->
+  <rect x="156" y="96" width="28" height="64" rx="14" fill="#cbd5e1"/>
+  <rect x="328" y="96" width="28" height="64" rx="14" fill="#cbd5e1"/>
+
+  <!-- Priority Accent Dots -->
+  <circle cx="160" cy="260" r="14" fill="#ef4444"/>
+  <circle cx="216" cy="260" r="14" fill="#f59e0b"/>
+  <circle cx="272" cy="260" r="14" fill="#3b82f6"/>
+  
+  <!-- Checkmark Emblem -->
+  <path d="M180 340 L236 396 L348 284" fill="none" stroke="#10b981" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
