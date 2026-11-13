@@ -1,5 +1,5 @@
 /**
- * DayPlanner Application UI Controller
+ * DayPlanner Application UI Controller with Confidential Google Drive Sync
  */
 
 import { PRIORITIES, PRIORITY_LABELS } from '../core/activity.mjs';
@@ -12,10 +12,14 @@ import {
   filterUntickedTasks
 } from '../core/calendar-utils.mjs';
 import { createPlannerStore } from '../core/store.mjs';
+import { GoogleDriveSyncEngine } from '../core/gdrive-sync.mjs';
 
 export class DayPlannerApp {
   constructor() {
     this.store = createPlannerStore();
+    this.gdrive = new GoogleDriveSyncEngine();
+    this.syncTimeout = null;
+
     this.currentView = 'day'; // 'day' | 'week' | 'month' | 'tasks'
     this.selectedDate = getTodayISO();
     this.searchQuery = '';
@@ -26,6 +30,7 @@ export class DayPlannerApp {
     this.cacheElements();
     this.bindEvents();
     this.initPWA();
+    this.initGDrive();
   }
 
   cacheElements() {
@@ -52,6 +57,25 @@ export class DayPlannerApp {
     this.activityForm = document.getElementById('activity-form');
     this.modalTitle = document.getElementById('modal-title');
     this.backupModal = document.getElementById('backup-modal');
+    this.gdriveModal = document.getElementById('gdrive-modal');
+
+    // Google Drive Elements
+    this.syncPill = document.getElementById('btn-sync-status');
+    this.syncLabel = document.getElementById('sync-status-label');
+    this.userBadge = document.getElementById('user-profile-badge');
+    this.userAvatar = document.getElementById('user-avatar');
+    this.userName = document.getElementById('user-name');
+    this.signOutBtn = document.getElementById('btn-sign-out');
+
+    this.gdriveClientIdInput = document.getElementById('gdrive-client-id');
+    this.gdriveLoginBtn = document.getElementById('btn-gdrive-login');
+    this.gdriveSignOutBtn = document.getElementById('btn-gdrive-signout');
+    this.gdriveSyncNowBtn = document.getElementById('btn-gdrive-sync-now');
+    this.gdriveUnauthView = document.getElementById('gdrive-unauth-view');
+    this.gdriveAuthView = document.getElementById('gdrive-auth-view');
+    this.gdriveUserDisplay = document.getElementById('gdrive-user-display');
+    this.gdriveEmailDisplay = document.getElementById('gdrive-email-display');
+    this.gdriveLastSyncTime = document.getElementById('gdrive-last-sync-time');
 
     // Toast Container
     this.toastContainer = document.getElementById('toast-container');
@@ -112,6 +136,13 @@ export class DayPlannerApp {
     document.getElementById('btn-export-data').addEventListener('click', () => this.handleExportData());
     document.getElementById('btn-import-data').addEventListener('click', () => this.handleImportData());
 
+    // Google Drive Sync Controls
+    this.syncPill.addEventListener('click', () => this.openGDriveModal());
+    this.gdriveLoginBtn.addEventListener('click', () => this.handleGDriveLogin());
+    this.gdriveSignOutBtn?.addEventListener('click', () => this.handleGDriveSignOut());
+    this.signOutBtn?.addEventListener('click', () => this.handleGDriveSignOut());
+    this.gdriveSyncNowBtn?.addEventListener('click', () => this.syncWithGoogleDrive(true));
+
     // Keyboard Shortcuts
     window.addEventListener('keydown', (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
@@ -145,6 +176,126 @@ export class DayPlannerApp {
     }
   }
 
+  initGDrive() {
+    // Populate saved Client ID
+    if (this.gdriveClientIdInput) {
+      this.gdriveClientIdInput.value = this.gdrive.getClientId() || '';
+    }
+
+    // Subscribe to status changes
+    this.gdrive.onStatusChange((status, profile) => {
+      this.updateGDriveUI(status, profile);
+    });
+
+    this.updateGDriveUI(this.gdrive.status, this.gdrive.getProfile());
+
+    // If authenticated on reload, pull latest
+    if (this.gdrive.isAuthenticated()) {
+      this.syncWithGoogleDrive(false);
+    }
+  }
+
+  updateGDriveUI(status, profile) {
+    if (!this.syncPill) return;
+
+    this.syncPill.className = 'sync-status-pill';
+
+    if (status.state === 'SYNCED') {
+      this.syncPill.classList.add('synced');
+      this.syncLabel.textContent = status.lastSyncedAt ? `Synced ${status.lastSyncedAt}` : 'Drive Synced';
+      if (this.gdriveLastSyncTime) this.gdriveLastSyncTime.textContent = status.lastSyncedAt || 'Just now';
+    } else if (status.state === 'SYNCING') {
+      this.syncPill.classList.add('syncing');
+      this.syncLabel.textContent = 'Syncing...';
+    } else if (status.state === 'ERROR') {
+      this.syncPill.classList.add('error');
+      this.syncLabel.textContent = 'Drive Error';
+    } else {
+      this.syncPill.classList.add('unauthenticated');
+      this.syncLabel.textContent = 'Google Drive';
+    }
+
+    const isAuthed = this.gdrive.isAuthenticated();
+    if (this.gdriveUnauthView && this.gdriveAuthView) {
+      this.gdriveUnauthView.style.display = isAuthed ? 'none' : 'flex';
+      this.gdriveAuthView.style.display = isAuthed ? 'flex' : 'none';
+    }
+
+    if (isAuthed && profile) {
+      if (this.userBadge) this.userBadge.style.display = 'inline-flex';
+      if (this.userName) this.userName.textContent = profile.name || profile.email || 'User';
+      if (this.userAvatar) {
+        if (profile.picture) {
+          this.userAvatar.innerHTML = `<img src="${profile.picture}" alt="" style="width:100%;height:100%;border-radius:50%;">`;
+        } else {
+          this.userAvatar.textContent = (profile.name || 'U')[0].toUpperCase();
+        }
+      }
+      if (this.gdriveUserDisplay) this.gdriveUserDisplay.textContent = profile.name || 'Google Account';
+      if (this.gdriveEmailDisplay) this.gdriveEmailDisplay.textContent = profile.email || '';
+    } else {
+      if (this.userBadge) this.userBadge.style.display = 'none';
+    }
+  }
+
+  openGDriveModal() {
+    this.gdriveModal.classList.add('open');
+  }
+
+  async handleGDriveLogin() {
+    const clientId = this.gdriveClientIdInput.value.trim();
+    if (!clientId) {
+      alert('Please enter your Google Cloud OAuth Client ID first.\n\nTip: You can create one free in Google Cloud Console > Credentials > OAuth Client ID (Web Application).');
+      return;
+    }
+
+    try {
+      this.showToast('Connecting to Google...');
+      await this.gdrive.requestAccessToken(clientId);
+      this.showToast('Connected to Google Drive!');
+      await this.syncWithGoogleDrive(true);
+    } catch (e) {
+      alert(`Google Sign-In Error: ${e.message}`);
+    }
+  }
+
+  handleGDriveSignOut() {
+    this.gdrive.signOut();
+    this.showToast('Signed out of Google Drive');
+  }
+
+  async syncWithGoogleDrive(manual = false) {
+    if (!this.gdrive.isAuthenticated()) {
+      if (manual) this.openGDriveModal();
+      return;
+    }
+
+    try {
+      const localActivities = await this.store.queryActivities();
+      const result = await this.gdrive.syncNow(localActivities);
+
+      // Re-populate store with merged records
+      if (result.merged && result.merged.length > 0) {
+        await this.store.importData(JSON.stringify(result.merged));
+      }
+
+      if (manual) this.showToast('Google Drive sync complete!');
+      await this.render();
+    } catch (err) {
+      console.error('GDrive Sync failed:', err);
+      this.showToast(`Sync error: ${err.message}`, true);
+    }
+  }
+
+  queueGoogleDriveSync() {
+    if (!this.gdrive.isAuthenticated()) return;
+
+    if (this.syncTimeout) clearTimeout(this.syncTimeout);
+    this.syncTimeout = setTimeout(() => {
+      this.syncWithGoogleDrive(false);
+    }, 1500);
+  }
+
   switchView(viewName) {
     if (!this.viewPanels[viewName]) return;
     this.currentView = viewName;
@@ -169,7 +320,6 @@ export class DayPlannerApp {
     } else if (this.currentView === 'month') {
       d.setMonth(d.getMonth() + direction);
     } else {
-      // In Tasks view, step day
       d.setDate(d.getDate() + direction);
     }
     this.selectedDate = formatDateISO(d);
@@ -231,7 +381,6 @@ export class DayPlannerApp {
     const all = await this.store.queryActivities();
     const categories = Array.from(new Set(all.map(a => a.category || 'General'))).sort();
     
-    // Preserve selection
     const currentVal = this.categoryFilter.value;
     this.categoryFilter.innerHTML = '<option value="">All Categories</option>';
     categories.forEach(cat => {
@@ -335,6 +484,7 @@ export class DayPlannerApp {
       if (confirm(`Delete activity "${activity.title}"?`)) {
         await this.store.deleteActivity(activity.id);
         this.showToast('Activity deleted');
+        this.queueGoogleDriveSync();
         this.render();
       }
     });
@@ -427,7 +577,6 @@ export class DayPlannerApp {
         colBody.appendChild(mini);
       });
 
-      // Quick add on header click
       col.querySelector('.week-col-header').addEventListener('click', () => {
         this.selectedDate = day.isoString;
         this.openActivityModal({ date: day.isoString });
@@ -465,7 +614,6 @@ export class DayPlannerApp {
       `;
 
       const actsWrap = cellEl.querySelector('.month-cell-activities');
-      // Show up to 3 badges per cell
       filtered.slice(0, 3).forEach(act => {
         const pClass = act.priority.split('_')[0].toLowerCase();
         const pill = document.createElement('div');
@@ -482,7 +630,6 @@ export class DayPlannerApp {
         actsWrap.appendChild(more);
       }
 
-      // Clicking cell switches to day view of that date
       cellEl.addEventListener('click', () => {
         this.selectedDate = cell.isoString;
         this.switchView('day');
@@ -557,6 +704,7 @@ export class DayPlannerApp {
     try {
       const toggled = await this.store.toggleActivity(id);
       this.showToast(toggled.completed ? 'Activity completed!' : 'Marked active');
+      this.queueGoogleDriveSync();
       await this.render();
     } catch (e) {
       this.showToast(`Error: ${e.message}`, true);
@@ -620,6 +768,7 @@ export class DayPlannerApp {
       }
 
       this.closeModals();
+      this.queueGoogleDriveSync();
       this.render();
     } catch (err) {
       alert(`Error saving activity: ${err.message}`);
@@ -633,6 +782,7 @@ export class DayPlannerApp {
   closeModals() {
     this.activityModal.classList.remove('open');
     this.backupModal.classList.remove('open');
+    this.gdriveModal.classList.remove('open');
     this.editingActivityId = null;
   }
 
@@ -661,6 +811,7 @@ export class DayPlannerApp {
         const res = await this.store.importData(e.target.result);
         this.showToast(`Imported ${res.imported} activities successfully!`);
         this.closeModals();
+        this.queueGoogleDriveSync();
         this.render();
       } catch (err) {
         alert(`Import failed: ${err.message}`);
@@ -701,4 +852,3 @@ if (typeof document !== 'undefined') {
     window.dayPlannerApp.render();
   });
 }
-

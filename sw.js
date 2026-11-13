@@ -2,7 +2,7 @@
  * DayPlanner Offline Service Worker (PWA Cache)
  */
 
-const CACHE_NAME = 'dayplanner-v1';
+const CACHE_NAME = 'dayplanner-v2';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -12,6 +12,7 @@ const ASSETS_TO_CACHE = [
   './js/core/activity.mjs',
   './js/core/calendar-utils.mjs',
   './js/core/store.mjs',
+  './js/core/gdrive-sync.mjs',
   './icons/icon.svg'
 ];
 
@@ -38,13 +39,21 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Offline-first strategy
+  const url = new URL(event.request.url);
+
+  // Never cache external Google OAuth or Google Drive API calls
+  if (url.hostname.includes('googleapis.com') ||
+      url.hostname.includes('accounts.google.com') ||
+      url.hostname.includes('google.com')) {
+    return;
+  }
+
   if (event.request.method !== 'GET') return;
   
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Fetch in background to revalidate cache
+        // Background revalidation
         fetch(event.request).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
@@ -55,11 +64,9 @@ self.addEventListener('fetch', (event) => {
       }
       return fetch(event.request);
     }).catch(() => {
-      // Fallback to cached index for navigation
       if (event.request.mode === 'navigate') {
         return caches.match('./index.html');
       }
     })
   );
 });
-

@@ -885,6 +885,104 @@ body {
 .priority-option.opt-p3 input:checked + label { color: var(--p3-color); background: var(--p3-bg); }
 .priority-option.opt-p4 input:checked + label { color: var(--p4-color); background: var(--p4-bg); }
 
+/* Google Drive Sync & Auth Pill */
+.sync-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sync-status-pill:hover {
+  border-color: var(--border-active);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.sync-status-pill.synced .sync-dot {
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+}
+
+.sync-status-pill.syncing .sync-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+  animation: pulse 1s infinite alternate;
+}
+
+.sync-status-pill.unauthenticated .sync-dot {
+  background: #3b82f6;
+}
+
+.sync-status-pill.error .sync-dot {
+  background: var(--p1-color);
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.8); opacity: 0.6; }
+  100% { transform: scale(1.3); opacity: 1; }
+}
+
+.user-profile-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 0.25rem 0.75rem 0.25rem 0.35rem;
+  font-size: 0.8rem;
+}
+
+.user-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--accent-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.7rem;
+  color: #fff;
+}
+
+.btn-gdrive-auth {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #ffffff;
+  color: #1f2937;
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.btn-gdrive-auth:hover {
+  background: #f1f5f9;
+  transform: translateY(-1px);
+}
+
 /* Toast Notifications */
 .toast-container {
   position: fixed;
@@ -953,3 +1051,4 @@ body {
     padding: 0.4rem;
   }
 }
+

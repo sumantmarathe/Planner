@@ -14,6 +14,7 @@ const requiredFiles = [
   'js/core/activity.mjs',
   'js/core/calendar-utils.mjs',
   'js/core/store.mjs',
+  'js/core/gdrive-sync.mjs',
   'icons/icon.svg'
 ];
 

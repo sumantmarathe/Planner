@@ -20,6 +20,11 @@ A high-assurance, premium day planner and activity calendar designed for dual-ta
   - `P3 - Medium` (Cobalt Blue)
   - `P4 - Low` (Slate Gray)
 - **Checkmark & Completion Flow**: Interactive checkmarks with smooth completion animations that instantly update the task backlog and calendar states.
+- **Strictly Confidential Google Drive Storage**:
+  - Direct integration with Google Identity Services (OAuth 2.0).
+  - Stores all activities and task states strictly inside the user's private Google Drive `appDataFolder` (`dayplanner_database.json`).
+  - Maximum confidentiality: **Zero intermediate servers or third-party databases**. Direct browser-to-Google-Drive REST API v3 communication.
+  - Automatic debounced synchronization on every edit + conflict resolution by timestamp (`updatedAt`).
 - **Local-First & Offline Resilience**: Automatic IndexedDB persistence with LocalStorage fallback, offline service worker (`sw.js`), and one-click JSON backup export/restore.
 - **Keyboard Shortcuts**:
   - `N`: Plan new activity
