@@ -52,6 +52,10 @@
         <span>Tasks</span>
         <span class="badge-count" id="tasks-pending-badge" style="display:none;">0</span>
       </button>
+      <button class="view-nav-btn" data-view="habits">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        <span>Habits</span>
+      </button>
     </nav>
 
     <!-- Header Actions -->
@@ -143,6 +147,48 @@
     <!-- VIEW 4: TASKS (Unticked Backlog) -->
     <section class="view-panel" id="view-tasks">
       <div class="tasks-sections" id="tasks-view-container"></div>
+    </section>
+
+    <!-- VIEW 5: HABITS (Habit Building & Recurrence Tracking) -->
+    <section class="view-panel" id="view-habits">
+      <!-- Momentum & Streak Summary Banner -->
+      <div class="habits-momentum-banner">
+        <div class="momentum-stat-card">
+          <div class="stat-icon-wrap" style="color: #6366f1;">🌱</div>
+          <div class="stat-info">
+            <span class="stat-value" id="stat-active-habits">0</span>
+            <span class="stat-label">Active Habits</span>
+          </div>
+        </div>
+        <div class="momentum-stat-card">
+          <div class="stat-icon-wrap" style="color: #10b981;">✓</div>
+          <div class="stat-info">
+            <span class="stat-value" id="stat-completed-today">0 / 0</span>
+            <span class="stat-label">Completed Today</span>
+          </div>
+        </div>
+        <div class="momentum-stat-card">
+          <div class="stat-icon-wrap" style="color: #f59e0b;">🔥</div>
+          <div class="stat-info">
+            <span class="stat-value" id="stat-longest-streak">0 Days</span>
+            <span class="stat-label">Longest Streak</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Habits Header & Action Bar -->
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;" id="habit-category-filters">
+          <!-- Populated dynamically: All, Health, Fitness, Productivity, etc. -->
+        </div>
+        <button class="btn btn-primary" id="btn-new-habit" title="Create a new habit (H)">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <span>Build New Habit</span>
+        </button>
+      </div>
+
+      <!-- Habits Grid -->
+      <div class="habits-grid" id="habits-grid"></div>
     </section>
 
   </main>
@@ -339,6 +385,122 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary modal-close-trigger">Close</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Create / Edit Habit Modal -->
+  <div class="modal-backdrop" id="habit-modal">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title" id="habit-modal-title">Build New Habit</h3>
+        <button class="modal-close-btn modal-close-trigger">&times;</button>
+      </div>
+      <form id="habit-form">
+        <div class="modal-body">
+          <input type="hidden" id="form-habit-id">
+
+          <div class="form-group">
+            <label class="form-label" for="form-habit-title">Habit Name *</label>
+            <input type="text" class="form-input" id="form-habit-title" placeholder="e.g. Daily Meditation, 10k Steps, Reading" required>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="form-habit-category">Category</label>
+              <select class="form-select" id="form-habit-category">
+                <option value="Health">Health</option>
+                <option value="Fitness">Fitness</option>
+                <option value="Mindfulness">Mindfulness</option>
+                <option value="Productivity">Productivity</option>
+                <option value="Learning">Learning</option>
+                <option value="Personal">Personal</option>
+                <option value="Finance">Finance</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="form-habit-time-of-day">Time of Day</label>
+              <select class="form-select" id="form-habit-time-of-day">
+                <option value="anytime">Anytime</option>
+                <option value="morning">Morning (Sunrise)</option>
+                <option value="afternoon">Afternoon</option>
+                <option value="evening">Evening (Night)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="form-habit-recurrence">Recurrence Frequency</label>
+            <select class="form-select" id="form-habit-recurrence">
+              <option value="DAILY">Every Day</option>
+              <option value="WEEKDAYS">Weekdays Only (Mon - Fri)</option>
+              <option value="WEEKENDS">Weekends Only (Sat - Sun)</option>
+              <option value="WEEKLY">Specific Days of Week</option>
+              <option value="MONTHLY">Monthly</option>
+            </select>
+          </div>
+
+          <!-- Specific Days of Week Selector (Shown if WEEKLY selected) -->
+          <div class="form-group" id="habit-days-group" style="display: none;">
+            <label class="form-label">Active Days</label>
+            <div class="days-of-week-selector">
+              <div>
+                <input type="checkbox" id="dow-1" class="day-toggle-checkbox" value="1" checked>
+                <label for="dow-1" class="day-toggle-label">Mon</label>
+              </div>
+              <div>
+                <input type="checkbox" id="dow-2" class="day-toggle-checkbox" value="2">
+                <label for="dow-2" class="day-toggle-label">Tue</label>
+              </div>
+              <div>
+                <input type="checkbox" id="dow-3" class="day-toggle-checkbox" value="3" checked>
+                <label for="dow-3" class="day-toggle-label">Wed</label>
+              </div>
+              <div>
+                <input type="checkbox" id="dow-4" class="day-toggle-checkbox" value="4">
+                <label for="dow-4" class="day-toggle-label">Thu</label>
+              </div>
+              <div>
+                <input type="checkbox" id="dow-5" class="day-toggle-checkbox" value="5" checked>
+                <label for="dow-5" class="day-toggle-label">Fri</label>
+              </div>
+              <div>
+                <input type="checkbox" id="dow-6" class="day-toggle-checkbox" value="6">
+                <label for="dow-6" class="day-toggle-label">Sat</label>
+              </div>
+              <div>
+                <input type="checkbox" id="dow-0" class="day-toggle-checkbox" value="0">
+                <label for="dow-0" class="day-toggle-label">Sun</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="form-habit-start-time">Target Time (Optional)</label>
+              <input type="time" class="form-input" id="form-habit-start-time">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Priority</label>
+              <select class="form-select" id="form-habit-priority">
+                <option value="P1_URGENT">P1 - Urgent</option>
+                <option value="P2_HIGH">P2 - High</option>
+                <option value="P3_MEDIUM" selected>P3 - Medium</option>
+                <option value="P4_LOW">P4 - Low</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="form-habit-description">Motivation / Notes</label>
+            <textarea class="form-textarea" id="form-habit-description" rows="2" placeholder="Why is this habit important to you? What is your trigger?"></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary modal-close-trigger">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-habit">Save Habit</button>
+        </div>
+      </form>
     </div>
   </div>
 

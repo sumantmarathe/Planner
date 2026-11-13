@@ -290,16 +290,22 @@ export class GoogleDriveSyncEngine {
 
     try {
       const parsed = await res.json();
-      return Array.isArray(parsed) ? parsed : (parsed.activities || []);
+      if (Array.isArray(parsed)) {
+        return { activities: parsed, habits: [] };
+      }
+      return {
+        activities: parsed.activities || [],
+        habits: parsed.habits || []
+      };
     } catch {
-      return [];
+      return { activities: [], habits: [] };
     }
   }
 
   /**
    * Push contents to Google Drive
    */
-  async pushToDrive(activities) {
+  async pushToDrive(payload) {
     const fileId = await this.ensureFileId();
     const uploadUrl = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`;
 
@@ -309,7 +315,7 @@ export class GoogleDriveSyncEngine {
         Authorization: `Bearer ${this.accessToken}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(activities)
+      body: JSON.stringify(payload)
     });
 
     if (!res.ok) {
@@ -322,19 +328,42 @@ export class GoogleDriveSyncEngine {
   /**
    * Full Bi-Directional Synchronize
    */
-  async syncNow(localActivities = []) {
+  async syncNow(localPayload = []) {
     if (!this.isAuthenticated()) {
       this._setStatus('UNAUTHENTICATED');
-      return { merged: localActivities, status: this.status };
+      return { merged: localPayload, status: this.status };
     }
 
     this._setStatus('SYNCING');
     try {
+      const isArrayInput = Array.isArray(localPayload);
+      const localActs = isArrayInput ? localPayload : (localPayload.activities || []);
+      const localHabits = isArrayInput ? [] : (localPayload.habits || []);
+
       const remote = await this.pullFromDrive();
-      const merged = mergeDatasetsByTimestamp(localActivities, remote);
-      await this.pushToDrive(merged);
+      const mergedActs = mergeDatasetsByTimestamp(localActs, remote.activities || []);
+      const mergedHabits = mergeDatasetsByTimestamp(localHabits, remote.habits || []);
+
+      const payloadToSave = {
+        app: 'DayPlanner',
+        version: '2.0.0',
+        syncedAt: new Date().toISOString(),
+        activities: mergedActs,
+        habits: mergedHabits
+      };
+
+      await this.pushToDrive(payloadToSave);
       this._setStatus('SYNCED');
-      return { merged, status: this.status };
+
+      if (isArrayInput) {
+        return { merged: mergedActs, status: this.status };
+      }
+      return {
+        merged: payloadToSave,
+        activities: mergedActs,
+        habits: mergedHabits,
+        status: this.status
+      };
     } catch (err) {
       this._setStatus('ERROR', err.message);
       throw err;

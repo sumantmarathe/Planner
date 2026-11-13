@@ -1,5 +1,5 @@
 /**
- * DayPlanner Application UI Controller with Confidential Google Drive Sync
+ * DayPlanner Application UI Controller with Confidential Google Drive Sync & Habits
  */
 
 import { PRIORITIES, PRIORITY_LABELS } from '../core/activity.mjs';
@@ -14,6 +14,12 @@ import {
 import { createPlannerStore } from '../core/store.mjs';
 import { GoogleDriveSyncEngine } from '../core/gdrive-sync.mjs';
 import { APP_CONFIG } from '../config.mjs';
+import {
+  calculateHabitStats,
+  RECURRENCE_FREQUENCIES,
+  RECURRENCE_LABELS,
+  HABIT_CATEGORIES
+} from '../core/habit.mjs';
 
 export class DayPlannerApp {
   constructor() {
@@ -21,12 +27,14 @@ export class DayPlannerApp {
     this.gdrive = new GoogleDriveSyncEngine();
     this.syncTimeout = null;
 
-    this.currentView = 'day'; // 'day' | 'week' | 'month' | 'tasks'
+    this.currentView = 'day'; // 'day' | 'week' | 'month' | 'tasks' | 'habits'
     this.selectedDate = getTodayISO();
     this.searchQuery = '';
     this.selectedPriorityFilter = '';
     this.selectedCategoryFilter = '';
+    this.selectedHabitCategory = 'ALL';
     this.editingActivityId = null;
+    this.editingHabitId = null;
 
     this.cacheElements();
     this.bindEvents();
@@ -40,7 +48,8 @@ export class DayPlannerApp {
       day: document.getElementById('view-day'),
       week: document.getElementById('view-week'),
       month: document.getElementById('view-month'),
-      tasks: document.getElementById('view-tasks')
+      tasks: document.getElementById('view-tasks'),
+      habits: document.getElementById('view-habits')
     };
 
     this.pendingBadge = document.getElementById('tasks-pending-badge');
@@ -59,6 +68,19 @@ export class DayPlannerApp {
     this.modalTitle = document.getElementById('modal-title');
     this.backupModal = document.getElementById('backup-modal');
     this.gdriveModal = document.getElementById('gdrive-modal');
+
+    // Habit Elements
+    this.habitsGrid = document.getElementById('habits-grid');
+    this.statActiveHabits = document.getElementById('stat-active-habits');
+    this.statCompletedToday = document.getElementById('stat-completed-today');
+    this.statLongestStreak = document.getElementById('stat-longest-streak');
+    this.habitCategoryFilters = document.getElementById('habit-category-filters');
+    this.btnNewHabit = document.getElementById('btn-new-habit');
+    this.habitModal = document.getElementById('habit-modal');
+    this.habitForm = document.getElementById('habit-form');
+    this.habitModalTitle = document.getElementById('habit-modal-title');
+    this.habitRecurrenceSelect = document.getElementById('form-habit-recurrence');
+    this.habitDaysGroup = document.getElementById('habit-days-group');
 
     // Google Drive Elements
     this.syncPill = document.getElementById('btn-sync-status');
@@ -120,6 +142,21 @@ export class DayPlannerApp {
       this.openActivityModal();
     });
 
+    // Open Add Habit Modal
+    this.btnNewHabit?.addEventListener('click', () => {
+      this.openHabitModal();
+    });
+
+    // Habit Recurrence frequency toggle
+    this.habitRecurrenceSelect?.addEventListener('change', (e) => {
+      if (this.habitDaysGroup) {
+        this.habitDaysGroup.style.display = e.target.value === 'WEEKLY' ? 'block' : 'none';
+      }
+    });
+
+    // Habit Form Submit
+    this.habitForm?.addEventListener('submit', (e) => this.handleHabitSubmit(e));
+
     // Modal Close
     document.querySelectorAll('.modal-close-trigger').forEach(el => {
       el.addEventListener('click', () => {
@@ -153,6 +190,9 @@ export class DayPlannerApp {
       if (e.key.toLowerCase() === 'n') {
         e.preventDefault();
         this.openActivityModal();
+      } else if (e.key.toLowerCase() === 'h') {
+        e.preventDefault();
+        this.switchView('habits');
       } else if (e.key === '1') {
         this.switchView('day');
       } else if (e.key === '2') {
@@ -161,6 +201,8 @@ export class DayPlannerApp {
         this.switchView('month');
       } else if (e.key === '4') {
         this.switchView('tasks');
+      } else if (e.key === '5') {
+        this.switchView('habits');
       } else if (e.key === 'Escape') {
         this.closeModals();
       }
@@ -178,19 +220,16 @@ export class DayPlannerApp {
   }
 
   initGDrive() {
-    // Populate saved Client ID
     if (this.gdriveClientIdInput) {
-      this.gdriveClientIdInput.value = this.gdrive.getClientId() || '';
+      this.gdriveClientIdInput.value = this.gdrive.getClientId() || APP_CONFIG.GOOGLE_CLIENT_ID;
     }
 
-    // Subscribe to status changes
     this.gdrive.onStatusChange((status, profile) => {
       this.updateGDriveUI(status, profile);
     });
 
     this.updateGDriveUI(this.gdrive.status, this.gdrive.getProfile());
 
-    // If authenticated on reload, pull latest
     if (this.gdrive.isAuthenticated()) {
       this.syncWithGoogleDrive(false);
     }
@@ -272,11 +311,15 @@ export class DayPlannerApp {
     }
 
     try {
-      const localActivities = await this.store.queryActivities();
-      const result = await this.gdrive.syncNow(localActivities);
+      const rawExport = await this.store.exportData();
+      const parsedExport = JSON.parse(rawExport);
 
-      // Re-populate store with merged records
-      if (result.merged && result.merged.length > 0) {
+      const result = await this.gdrive.syncNow({
+        activities: parsedExport.activities || [],
+        habits: parsedExport.habits || []
+      });
+
+      if (result.merged) {
         await this.store.importData(JSON.stringify(result.merged));
       }
 
@@ -342,8 +385,10 @@ export class DayPlannerApp {
       headingText = `${start} – ${end}`;
     } else if (this.currentView === 'month') {
       headingText = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    } else {
+    } else if (this.currentView === 'tasks') {
       headingText = `Task Backlog (${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`;
+    } else if (this.currentView === 'habits') {
+      headingText = `Habits & Recurring Life (${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`;
     }
 
     this.currentDateHeading.textContent = headingText;
@@ -366,6 +411,9 @@ export class DayPlannerApp {
         break;
       case 'tasks':
         await this.renderTasksView();
+        break;
+      case 'habits':
+        await this.renderHabitsView();
         break;
     }
   }
@@ -432,7 +480,10 @@ export class DayPlannerApp {
       </div>
       <div class="activity-content">
         <div class="activity-header">
-          <span class="activity-title">${this.escapeHTML(activity.title)}</span>
+          <span class="activity-title">
+            ${activity.isHabit ? '<span style="color:#a5b4fc;margin-right:0.35rem;" title="Recurring Habit">🌱</span>' : ''}
+            ${this.escapeHTML(activity.title)}
+          </span>
           <span class="badge-priority ${activity.priority}">
             ${PRIORITY_LABELS[activity.priority] || activity.priority}
           </span>
@@ -451,6 +502,7 @@ export class DayPlannerApp {
         </div>
       </div>
       <div class="activity-actions">
+        ${activity.isHabit ? '' : `
         <button class="action-icon-btn edit" title="Edit activity">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -463,6 +515,7 @@ export class DayPlannerApp {
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
           </svg>
         </button>
+        `}
       </div>
     `;
 
@@ -474,13 +527,13 @@ export class DayPlannerApp {
     });
 
     // Edit handler
-    card.querySelector('.action-icon-btn.edit').addEventListener('click', (e) => {
+    card.querySelector('.action-icon-btn.edit')?.addEventListener('click', (e) => {
       e.stopPropagation();
       this.openActivityModal(activity);
     });
 
     // Delete handler
-    card.querySelector('.action-icon-btn.delete').addEventListener('click', async (e) => {
+    card.querySelector('.action-icon-btn.delete')?.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (confirm(`Delete activity "${activity.title}"?`)) {
         await this.store.deleteActivity(activity.id);
@@ -561,7 +614,9 @@ export class DayPlannerApp {
             <svg viewBox="0 0 24 24" width="10" height="10"><polyline points="20 6 9 17 4 12"></polyline></svg>
           </div>
           <div style="flex:1;min-width:0;">
-            <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${this.escapeHTML(act.title)}</div>
+            <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${act.isHabit ? '🌱 ' : ''}${this.escapeHTML(act.title)}
+            </div>
             ${act.startTime ? `<div style="font-size:0.7rem;color:var(--text-dim);">${act.startTime}</div>` : ''}
           </div>
         `;
@@ -572,7 +627,7 @@ export class DayPlannerApp {
         });
 
         mini.addEventListener('click', () => {
-          this.openActivityModal(act);
+          if (!act.isHabit) this.openActivityModal(act);
         });
 
         colBody.appendChild(mini);
@@ -701,6 +756,288 @@ export class DayPlannerApp {
     });
   }
 
+  // ------------------------------------
+  // HABITS VIEW (Creative & Rich Habit Page)
+  // ------------------------------------
+  async renderHabitsView() {
+    const habits = await this.store.getAllHabits();
+    const todayIso = getTodayISO();
+
+    // 1. Compute overall momentum stats
+    let totalScheduledToday = 0;
+    let completedTodayCount = 0;
+    let longestStreak = 0;
+
+    habits.forEach(h => {
+      const stats = calculateHabitStats(h, todayIso);
+      if (stats.bestStreak > longestStreak) longestStreak = stats.bestStreak;
+
+      const isTodayScheduled = stats.historyLast14d[stats.historyLast14d.length - 1]?.isTargetDay;
+      const isTodayCompleted = stats.historyLast14d[stats.historyLast14d.length - 1]?.completed;
+
+      if (isTodayScheduled) {
+        totalScheduledToday++;
+        if (isTodayCompleted) completedTodayCount++;
+      }
+    });
+
+    if (this.statActiveHabits) this.statActiveHabits.textContent = habits.length;
+    if (this.statCompletedToday) this.statCompletedToday.textContent = `${completedTodayCount} / ${totalScheduledToday}`;
+    if (this.statLongestStreak) this.statLongestStreak.textContent = `${longestStreak} Days`;
+
+    // 2. Render Habit Category Filters
+    if (this.habitCategoryFilters) {
+      this.habitCategoryFilters.innerHTML = '';
+      const categories = ['ALL', ...HABIT_CATEGORIES];
+
+      categories.forEach(cat => {
+        const pill = document.createElement('button');
+        pill.className = `btn btn-secondary ${this.selectedHabitCategory === cat ? 'active' : ''}`;
+        pill.style.padding = '0.3rem 0.75rem';
+        pill.style.fontSize = '0.75rem';
+        if (this.selectedHabitCategory === cat) {
+          pill.style.background = 'var(--accent-primary)';
+          pill.style.color = '#fff';
+        }
+        pill.textContent = cat === 'ALL' ? 'All Habits' : cat;
+        pill.addEventListener('click', () => {
+          this.selectedHabitCategory = cat;
+          this.renderHabitsView();
+        });
+        this.habitCategoryFilters.appendChild(pill);
+      });
+    }
+
+    // 3. Filter habits
+    let displayHabits = habits;
+    if (this.selectedHabitCategory !== 'ALL') {
+      displayHabits = displayHabits.filter(h => (h.category || '').toLowerCase() === this.selectedHabitCategory.toLowerCase());
+    }
+    if (this.searchQuery) {
+      const q = this.searchQuery.toLowerCase();
+      displayHabits = displayHabits.filter(h =>
+        h.title.toLowerCase().includes(q) ||
+        (h.description && h.description.toLowerCase().includes(q)) ||
+        (h.category && h.category.toLowerCase().includes(q))
+      );
+    }
+
+    // 4. Render Habit Cards Grid
+    if (!this.habitsGrid) return;
+    this.habitsGrid.innerHTML = '';
+
+    if (displayHabits.length === 0) {
+      this.habitsGrid.innerHTML = `
+        <div class="empty-state" style="grid-column: 1 / -1;">
+          <div class="empty-icon" style="color: #6366f1;">🌱</div>
+          <h3>No habits established yet</h3>
+          <p style="margin-top: 0.5rem; font-size: 0.875rem;">Build a consistent routine by clicking "Build New Habit" or pressing <kbd>H</kbd>.</p>
+        </div>
+      `;
+      return;
+    }
+
+    displayHabits.forEach(habit => {
+      const stats = calculateHabitStats(habit, todayIso);
+      const isTodayCompleted = Boolean(habit.completions && habit.completions[todayIso]);
+      const recurrenceLabel = RECURRENCE_LABELS[habit.recurrence?.frequency] || 'Daily';
+
+      const card = document.createElement('div');
+      card.className = 'habit-card';
+
+      // Build 14-day history dots HTML
+      const dotsHtml = stats.historyLast14d.map(entry => {
+        let dotClass = 'history-dot';
+        if (entry.completed) dotClass += ' completed';
+        if (entry.isToday) dotClass += ' is-today';
+        if (!entry.isTargetDay) dotClass += ' not-scheduled';
+        const tooltip = `${entry.date} (${entry.dayNameShort}): ${entry.completed ? 'Done ✓' : (entry.isTargetDay ? 'Pending' : 'Off day')}`;
+        return `<div class="${dotClass}" data-date="${entry.date}" data-tooltip="${tooltip}"></div>`;
+      }).join('');
+
+      card.innerHTML = `
+        <div class="habit-card-header">
+          <div class="habit-title-area">
+            <h4 class="habit-title">${this.escapeHTML(habit.title)}</h4>
+            <div class="habit-badges-row">
+              <span class="habit-category-pill">${this.escapeHTML(habit.category)}</span>
+              <span class="habit-recurrence-pill">${recurrenceLabel}</span>
+              ${habit.timeOfDay && habit.timeOfDay !== 'anytime' ? `<span class="habit-category-pill">${habit.timeOfDay}</span>` : ''}
+            </div>
+          </div>
+          <div class="activity-actions" style="opacity: 1;">
+            <button class="action-icon-btn edit" title="Edit habit">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </button>
+            <button class="action-icon-btn delete" title="Delete habit">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </div>
+
+        ${habit.description ? `<p style="font-size: 0.8rem; color: var(--text-muted);">${this.escapeHTML(habit.description)}</p>` : ''}
+
+        <!-- Interactive Today Action Box -->
+        <div class="habit-today-action ${isTodayCompleted ? 'completed' : ''}">
+          <div class="habit-today-label">
+            <span class="habit-today-title">${isTodayCompleted ? 'Completed Today ✓' : 'Mark Today Complete'}</span>
+            <span class="habit-today-sub">${isTodayCompleted ? 'Awesome job maintaining momentum!' : 'Tap to record habit completion'}</span>
+          </div>
+          <div class="custom-checkbox ${isTodayCompleted ? 'checked' : ''}" style="width: 26px; height: 26px;">
+            <svg viewBox="0 0 24 24" width="16" height="16"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </div>
+        </div>
+
+        <!-- Streaks & Consistency Metrics -->
+        <div class="habit-streaks-row">
+          <span class="streak-pill current" title="Current consecutive streak">🔥 ${stats.currentStreak} Days</span>
+          <span class="streak-pill best" title="Personal best streak">🏆 Best ${stats.bestStreak}</span>
+          <span class="streak-pill rate" title="30-day completion consistency">📈 ${stats.completionRate30d}%</span>
+        </div>
+
+        <!-- 14-Day Micro Heatmap Strip -->
+        <div class="habit-history-strip">
+          <div class="strip-label-row">
+            <span>Past 14 Days</span>
+            <span>Today</span>
+          </div>
+          <div class="history-dots-row">${dotsHtml}</div>
+        </div>
+      `;
+
+      // Today action click handler
+      card.querySelector('.habit-today-action').addEventListener('click', async () => {
+        await this.toggleHabitDate(habit.id, todayIso);
+      });
+
+      // Click on any history dot to toggle that date
+      card.querySelectorAll('.history-dot').forEach(dot => {
+        dot.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const targetDate = dot.dataset.date;
+          await this.toggleHabitDate(habit.id, targetDate);
+        });
+      });
+
+      // Edit Habit
+      card.querySelector('.action-icon-btn.edit').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.openHabitModal(habit);
+      });
+
+      // Delete Habit
+      card.querySelector('.action-icon-btn.delete').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (confirm(`Delete habit "${habit.title}"? Your completion history will be removed.`)) {
+          await this.store.deleteHabit(habit.id);
+          this.showToast('Habit removed');
+          this.queueGoogleDriveSync();
+          this.render();
+        }
+      });
+
+      this.habitsGrid.appendChild(card);
+    });
+  }
+
+  async toggleHabitDate(habitId, dateIso) {
+    try {
+      const res = await this.store.toggleHabitDate(habitId, dateIso);
+      this.showToast(res.completed ? `Habit completed for ${dateIso}! 🔥` : `Marked incomplete for ${dateIso}`);
+      this.queueGoogleDriveSync();
+      await this.render();
+    } catch (e) {
+      this.showToast(`Error: ${e.message}`, true);
+    }
+  }
+
+  openHabitModal(preset = {}) {
+    this.editingHabitId = preset.id || null;
+    this.habitModalTitle.textContent = this.editingHabitId ? 'Edit Habit' : 'Build New Habit';
+
+    document.getElementById('form-habit-id').value = preset.id || '';
+    document.getElementById('form-habit-title').value = preset.title || '';
+    document.getElementById('form-habit-category').value = preset.category || 'Health';
+    document.getElementById('form-habit-time-of-day').value = preset.timeOfDay || 'anytime';
+    document.getElementById('form-habit-recurrence').value = preset.recurrence?.frequency || 'DAILY';
+    document.getElementById('form-habit-start-time').value = preset.startTime || '';
+    document.getElementById('form-habit-priority').value = preset.priority || 'P3_MEDIUM';
+    document.getElementById('form-habit-description').value = preset.description || '';
+
+    // Days of week toggles
+    const isWeekly = preset.recurrence?.frequency === 'WEEKLY';
+    if (this.habitDaysGroup) {
+      this.habitDaysGroup.style.display = isWeekly ? 'block' : 'none';
+      const days = preset.recurrence?.daysOfWeek || [1, 3, 5];
+      [0, 1, 2, 3, 4, 5, 6].forEach(d => {
+        const chk = document.getElementById(`dow-${d}`);
+        if (chk) chk.checked = days.includes(d);
+      });
+    }
+
+    this.habitModal.classList.add('open');
+    setTimeout(() => document.getElementById('form-habit-title').focus(), 50);
+  }
+
+  async handleHabitSubmit(e) {
+    e.preventDefault();
+
+    const title = document.getElementById('form-habit-title').value.trim();
+    const category = document.getElementById('form-habit-category').value;
+    const timeOfDay = document.getElementById('form-habit-time-of-day').value;
+    const frequency = document.getElementById('form-habit-recurrence').value;
+    const startTime = document.getElementById('form-habit-start-time').value || null;
+    const priority = document.getElementById('form-habit-priority').value;
+    const description = document.getElementById('form-habit-description').value.trim();
+
+    const daysOfWeek = [];
+    if (frequency === 'WEEKLY') {
+      [0, 1, 2, 3, 4, 5, 6].forEach(d => {
+        if (document.getElementById(`dow-${d}`)?.checked) {
+          daysOfWeek.push(parseInt(d, 10));
+        }
+      });
+      if (daysOfWeek.length === 0) daysOfWeek.push(1, 3, 5);
+    }
+
+    const recurrence = {
+      frequency,
+      daysOfWeek: frequency === 'WEEKLY' ? daysOfWeek : undefined
+    };
+
+    try {
+      if (this.editingHabitId) {
+        await this.store.updateHabit(this.editingHabitId, {
+          title,
+          category,
+          timeOfDay,
+          recurrence,
+          startTime,
+          priority,
+          description
+        });
+        this.showToast('Habit updated');
+      } else {
+        await this.store.createHabit({
+          title,
+          category,
+          timeOfDay,
+          recurrence,
+          startTime,
+          priority,
+          description
+        });
+        this.showToast('New habit established! 🌱');
+      }
+
+      this.closeModals();
+      this.queueGoogleDriveSync();
+      this.render();
+    } catch (err) {
+      alert(`Error saving habit: ${err.message}`);
+    }
+  }
+
   async toggleActivity(id) {
     try {
       const toggled = await this.store.toggleActivity(id);
@@ -784,7 +1121,9 @@ export class DayPlannerApp {
     this.activityModal.classList.remove('open');
     this.backupModal.classList.remove('open');
     this.gdriveModal.classList.remove('open');
+    this.habitModal?.classList.remove('open');
     this.editingActivityId = null;
+    this.editingHabitId = null;
   }
 
   async handleExportData() {
@@ -810,7 +1149,7 @@ export class DayPlannerApp {
     reader.onload = async (e) => {
       try {
         const res = await this.store.importData(e.target.result);
-        this.showToast(`Imported ${res.imported} activities successfully!`);
+        this.showToast(`Imported ${res.imported} records successfully!`);
         this.closeModals();
         this.queueGoogleDriveSync();
         this.render();

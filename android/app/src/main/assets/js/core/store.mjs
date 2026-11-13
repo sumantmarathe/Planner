@@ -1,13 +1,26 @@
 /**
- * Local-First Storage Engine & Store
+ * Local-First Storage Engine & Store with Habit & Activity Integration
  */
 
 import {
   createActivityModel,
   toggleActivityCompletion,
-  validateActivityInput
+  validateActivityInput,
+  PRIORITIES
 } from './activity.mjs';
-import { filterUntickedTasks } from './calendar-utils.mjs';
+import {
+  formatDateISO,
+  parseDateISO,
+  getTodayISO,
+  filterUntickedTasks
+} from './calendar-utils.mjs';
+import {
+  createHabitModel,
+  toggleHabitCompletion,
+  validateHabitInput,
+  generateOccurrences,
+  isDateScheduledByRule
+} from './habit.mjs';
 
 /**
  * In-memory storage adapter for unit tests & node headless environments
@@ -25,9 +38,9 @@ export class MemoryStorageAdapter {
     return this.items.get(id) || null;
   }
 
-  async save(activity) {
-    this.items.set(activity.id, { ...activity });
-    return this.items.get(activity.id);
+  async save(item) {
+    this.items.set(item.id, { ...item });
+    return this.items.get(item.id);
   }
 
   async remove(id) {
@@ -38,15 +51,15 @@ export class MemoryStorageAdapter {
     this.items.clear();
   }
 
-  async bulkSave(activities) {
-    for (const a of activities) {
-      this.items.set(a.id, { ...a });
+  async bulkSave(items) {
+    for (const item of items) {
+      this.items.set(item.id, { ...item });
     }
   }
 }
 
 /**
- * LocalStorage adapter for browser environments without IndexedDB or for fallback
+ * LocalStorage adapter for browser environments
  */
 export class LocalStorageAdapter {
   constructor(storageKey = 'dayplanner_activities_v1') {
@@ -79,16 +92,16 @@ export class LocalStorageAdapter {
     return list.find(item => item.id === id) || null;
   }
 
-  async save(activity) {
+  async save(item) {
     const list = this._read();
-    const idx = list.findIndex(item => item.id === activity.id);
+    const idx = list.findIndex(i => i.id === item.id);
     if (idx >= 0) {
-      list[idx] = { ...activity };
+      list[idx] = { ...item };
     } else {
-      list.push({ ...activity });
+      list.push({ ...item });
     }
     this._write(list);
-    return activity;
+    return item;
   }
 
   async remove(id) {
@@ -103,11 +116,11 @@ export class LocalStorageAdapter {
     localStorage.removeItem(this.storageKey);
   }
 
-  async bulkSave(activities) {
+  async bulkSave(items) {
     const list = this._read();
     const map = new Map(list.map(i => [i.id, i]));
-    for (const a of activities) {
-      map.set(a.id, a);
+    for (const item of items) {
+      map.set(item.id, item);
     }
     this._write(Array.from(map.values()));
   }
@@ -117,7 +130,7 @@ export class LocalStorageAdapter {
  * IndexedDB adapter for high-capacity local-first browser storage
  */
 export class IndexedDBStorageAdapter {
-  constructor(dbName = 'DayPlannerDB', storeName = 'activities', version = 1) {
+  constructor(dbName = 'DayPlannerDB', storeName = 'activities', version = 2) {
     this.dbName = dbName;
     this.storeName = storeName;
     this.version = version;
@@ -130,11 +143,14 @@ export class IndexedDBStorageAdapter {
       const req = indexedDB.open(this.dbName, this.version);
       req.onupgradeneeded = (e) => {
         const db = e.target.result;
-        if (!db.objectStoreNames.contains(this.storeName)) {
-          const store = db.createObjectStore(this.storeName, { keyPath: 'id' });
-          store.createIndex('date', 'date', { unique: false });
-          store.createIndex('priority', 'priority', { unique: false });
-          store.createIndex('completed', 'completed', { unique: false });
+        if (!db.objectStoreNames.contains('activities')) {
+          const actStore = db.createObjectStore('activities', { keyPath: 'id' });
+          actStore.createIndex('date', 'date', { unique: false });
+          actStore.createIndex('priority', 'priority', { unique: false });
+          actStore.createIndex('completed', 'completed', { unique: false });
+        }
+        if (!db.objectStoreNames.contains('habits')) {
+          db.createObjectStore('habits', { keyPath: 'id' });
         }
       };
       req.onsuccess = (e) => {
@@ -167,13 +183,13 @@ export class IndexedDBStorageAdapter {
     });
   }
 
-  async save(activity) {
+  async save(item) {
     const db = await this._getDb();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(this.storeName, 'readwrite');
       const store = tx.objectStore(this.storeName);
-      const req = store.put(activity);
-      req.onsuccess = () => resolve(activity);
+      const req = store.put(item);
+      req.onsuccess = () => resolve(item);
       req.onerror = () => reject(req.error);
     });
   }
@@ -200,13 +216,13 @@ export class IndexedDBStorageAdapter {
     });
   }
 
-  async bulkSave(activities) {
+  async bulkSave(items) {
     const db = await this._getDb();
     return new Promise((resolve, reject) => {
       const tx = db.transaction(this.storeName, 'readwrite');
       const store = tx.objectStore(this.storeName);
-      for (const a of activities) {
-        store.put(a);
+      for (const item of items) {
+        store.put(item);
       }
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -215,22 +231,51 @@ export class IndexedDBStorageAdapter {
 }
 
 /**
- * Domain-level Planner Store
+ * Domain-level Unified Planner & Habit Store
  */
-export function createPlannerStore(storageAdapter) {
-  const adapter = storageAdapter || (typeof indexedDB !== 'undefined'
-    ? new IndexedDBStorageAdapter()
-    : (typeof localStorage !== 'undefined' ? new LocalStorageAdapter() : new MemoryStorageAdapter()));
+export function createPlannerStore(customActAdapter, customHabitAdapter) {
+  let actAdapter = customActAdapter;
+  let habitAdapter = customHabitAdapter;
+
+  if (actAdapter && !habitAdapter) {
+    habitAdapter = new MemoryStorageAdapter();
+  }
+
+  if (!actAdapter) {
+    if (typeof indexedDB !== 'undefined') {
+      actAdapter = new IndexedDBStorageAdapter('DayPlannerDB', 'activities', 2);
+      habitAdapter = new IndexedDBStorageAdapter('DayPlannerDB', 'habits', 2);
+    } else if (typeof localStorage !== 'undefined') {
+      actAdapter = new LocalStorageAdapter('dayplanner_activities_v1');
+      habitAdapter = new LocalStorageAdapter('dayplanner_habits_v1');
+    } else {
+      actAdapter = new MemoryStorageAdapter();
+      habitAdapter = new MemoryStorageAdapter();
+    }
+  }
 
   return {
+    // ------------------------------------
+    // ACTIVITIES CRUD
+    // ------------------------------------
     async createActivity(rawInput) {
       const activity = createActivityModel(rawInput);
-      await adapter.save(activity);
+      await actAdapter.save(activity);
       return activity;
     },
 
     async updateActivity(id, updates) {
-      const existing = await adapter.getById(id);
+      if (id.startsWith('hab_act__')) {
+        const parts = id.split('__');
+        const habitId = parts[1];
+        const dateIso = parts[2];
+        if (typeof updates.completed === 'boolean') {
+          await this.toggleHabitDate(habitId, dateIso);
+          return { id, ...updates };
+        }
+      }
+
+      const existing = await actAdapter.getById(id);
       if (!existing) {
         throw new Error(`ERR_ACTIVITY_NOT_FOUND: Activity ${id} does not exist`);
       }
@@ -238,12 +283,11 @@ export function createPlannerStore(storageAdapter) {
       const merged = {
         ...existing,
         ...updates,
-        id: existing.id, // prevent overwriting ID
+        id: existing.id,
         createdAt: existing.createdAt,
         updatedAt: new Date().toISOString()
       };
 
-      // Validate core integrity
       validateActivityInput({
         title: merged.title,
         date: merged.date,
@@ -254,30 +298,90 @@ export function createPlannerStore(storageAdapter) {
         category: merged.category
       });
 
-      await adapter.save(merged);
+      await actAdapter.save(merged);
       return merged;
     },
 
     async toggleActivity(id) {
-      const existing = await adapter.getById(id);
+      if (id.startsWith('hab_act__')) {
+        const parts = id.split('__');
+        const habitId = parts[1];
+        const dateIso = parts[2];
+        const res = await this.toggleHabitDate(habitId, dateIso);
+        return {
+          id,
+          completed: res.completed,
+          completedAt: res.completed ? new Date().toISOString() : null,
+          title: res.habit.title
+        };
+      }
+
+      const existing = await actAdapter.getById(id);
       if (!existing) {
         throw new Error(`ERR_ACTIVITY_NOT_FOUND: Activity ${id} does not exist`);
       }
       const toggled = toggleActivityCompletion(existing);
-      await adapter.save(toggled);
+      await actAdapter.save(toggled);
       return toggled;
     },
 
     async deleteActivity(id) {
-      return await adapter.remove(id);
+      if (id.startsWith('hab_act__')) return false;
+      return await actAdapter.remove(id);
     },
 
     async getActivity(id) {
-      return await adapter.getById(id);
+      if (id.startsWith('hab_act__')) {
+        const parts = id.split('__');
+        const habitId = parts[1];
+        const dateIso = parts[2];
+        const habit = await habitAdapter.getById(habitId);
+        if (!habit) return null;
+        return {
+          id,
+          habitId: habit.id,
+          title: habit.title,
+          date: dateIso,
+          priority: habit.priority,
+          category: habit.category,
+          completed: Boolean(habit.completions && habit.completions[dateIso]),
+          isHabit: true
+        };
+      }
+      return await actAdapter.getById(id);
     },
 
     async queryActivities(options = {}) {
-      let items = await adapter.getAll();
+      let items = await actAdapter.getAll();
+      const habits = await habitAdapter.getAll();
+
+      let dateRangeStart = options.startDate || options.date;
+      let dateRangeEnd = options.endDate || options.date;
+
+      if (dateRangeStart && dateRangeEnd) {
+        for (const habit of habits) {
+          const occDates = generateOccurrences(dateRangeStart, dateRangeEnd, habit.recurrence);
+          for (const d of occDates) {
+            const isCompleted = Boolean(habit.completions && habit.completions[d]);
+            items.push({
+              id: `hab_act__${habit.id}__${d}`,
+              habitId: habit.id,
+              title: habit.title,
+              description: habit.description || `Habit (${habit.timeOfDay})`,
+              date: d,
+              startTime: habit.startTime || null,
+              endTime: habit.endTime || null,
+              priority: habit.priority || PRIORITIES.P3_MEDIUM,
+              category: habit.category || 'Habit',
+              completed: isCompleted,
+              completedAt: isCompleted ? (habit.updatedAt || new Date().toISOString()) : null,
+              createdAt: habit.createdAt,
+              updatedAt: habit.updatedAt,
+              isHabit: true
+            });
+          }
+        }
+      }
 
       if (options.date) {
         items = items.filter(a => a.date === options.date);
@@ -306,7 +410,6 @@ export function createPlannerStore(storageAdapter) {
         );
       }
 
-      // Sort by start time then title
       return items.sort((a, b) => {
         if (a.date !== b.date) return a.date.localeCompare(b.date);
         const timeA = a.startTime || '99:99';
@@ -315,19 +418,94 @@ export function createPlannerStore(storageAdapter) {
       });
     },
 
-    async getPendingTasks(referenceDateIso) {
-      const items = await adapter.getAll();
+    async getPendingTasks(referenceDateIso = getTodayISO()) {
+      const refDate = parseDateISO(referenceDateIso);
+      const pastDate = new Date(refDate);
+      pastDate.setDate(pastDate.getDate() - 14);
+      const startDate = formatDateISO(pastDate);
+      const futureDate = new Date(refDate);
+      futureDate.setDate(futureDate.getDate() + 30);
+      const endDate = formatDateISO(futureDate);
+
+      const items = await this.queryActivities({ startDate, endDate });
       return filterUntickedTasks(items, referenceDateIso);
     },
 
+    // ------------------------------------
+    // HABITS CRUD
+    // ------------------------------------
+    async createHabit(rawInput) {
+      const habit = createHabitModel(rawInput);
+      await habitAdapter.save(habit);
+      return habit;
+    },
+
+    async updateHabit(id, updates) {
+      const existing = await habitAdapter.getById(id);
+      if (!existing) {
+        throw new Error(`ERR_HABIT_NOT_FOUND: Habit ${id} does not exist`);
+      }
+
+      const merged = {
+        ...existing,
+        ...updates,
+        id: existing.id,
+        createdAt: existing.createdAt,
+        updatedAt: new Date().toISOString()
+      };
+
+      validateHabitInput({
+        title: merged.title,
+        description: merged.description,
+        category: merged.category,
+        priority: merged.priority,
+        recurrence: merged.recurrence,
+        timeOfDay: merged.timeOfDay
+      });
+
+      await habitAdapter.save(merged);
+      return merged;
+    },
+
+    async toggleHabitDate(habitId, dateIso) {
+      const existing = await habitAdapter.getById(habitId);
+      if (!existing) {
+        throw new Error(`ERR_HABIT_NOT_FOUND: Habit ${habitId} does not exist`);
+      }
+
+      const updated = toggleHabitCompletion(existing, dateIso);
+      await habitAdapter.save(updated);
+      return {
+        habit: updated,
+        completed: Boolean(updated.completions && updated.completions[dateIso])
+      };
+    },
+
+    async deleteHabit(id) {
+      return await habitAdapter.remove(id);
+    },
+
+    async getHabit(id) {
+      return await habitAdapter.getById(id);
+    },
+
+    async getAllHabits() {
+      return await habitAdapter.getAll();
+    },
+
+    // ------------------------------------
+    // BACKUP & GOOGLE DRIVE PAYLOAD
+    // ------------------------------------
     async exportData() {
-      const items = await adapter.getAll();
+      const activities = await actAdapter.getAll();
+      const habits = await habitAdapter.getAll();
       const payload = {
         app: 'DayPlanner',
-        version: '1.0.0',
+        version: '2.0.0',
         exportedAt: new Date().toISOString(),
-        count: items.length,
-        activities: items
+        count: activities.length,
+        activities,
+        habits
       };
       return JSON.stringify(payload, null, 2);
     },
@@ -341,15 +519,14 @@ export function createPlannerStore(storageAdapter) {
       }
 
       const activities = Array.isArray(parsed) ? parsed : (parsed.activities || []);
-      if (!Array.isArray(activities)) {
-        throw new Error('ERR_IMPORT_CORRUPT: Payload must contain activity list');
-      }
+      const habits = parsed.habits || [];
 
-      const validRecords = [];
+      const validActs = [];
       for (const raw of activities) {
         try {
+          if (raw.isHabit || raw.id?.startsWith('hab_act_')) continue;
           const validated = validateActivityInput(raw);
-          validRecords.push({
+          validActs.push({
             id: raw.id || createActivityModel(raw).id,
             ...validated,
             completed: Boolean(raw.completed),
@@ -357,17 +534,32 @@ export function createPlannerStore(storageAdapter) {
             createdAt: raw.createdAt || new Date().toISOString(),
             updatedAt: new Date().toISOString()
           });
-        } catch {
-          // Skip invalid records
-        }
+        } catch {}
       }
 
-      await adapter.bulkSave(validRecords);
+      const validHabits = [];
+      for (const h of habits) {
+        try {
+          const validated = validateHabitInput(h);
+          validHabits.push({
+            id: h.id || createHabitModel(h).id,
+            ...validated,
+            completions: h.completions || {},
+            createdAt: h.createdAt || new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+        } catch {}
+      }
+
+      await actAdapter.bulkSave(validActs);
+      if (validHabits.length > 0) {
+        await habitAdapter.bulkSave(validHabits);
+      }
+
       return {
-        imported: validRecords.length,
+        imported: validActs.length + validHabits.length,
         success: true
       };
     }
   };
 }
-

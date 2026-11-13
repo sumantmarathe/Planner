@@ -14,6 +14,10 @@ A high-assurance, premium day planner and activity calendar designed for dual-ta
   - **Week View**: 7-day responsive multi-column calendar with activity chips and quick-add.
   - **Month View**: Full monthly grid with activity counts and priority badges.
   - **Tasks View (Unticked Backlog)**: Dedicated backlog showing all incomplete activities segmented into **Overdue**, **Today**, and **Upcoming**, sorted by priority.
+  - **Habits View (Life Routine & Streak Tracker)**: Dedicated habit building page with current flame streak (`🔥`), personal best (`🏆`), 30-day consistency rate, 14-day interactive micro-heatmap, and 1-tap completion.
+- **Flexible Activity & Habit Recurrence**:
+  - Configurable recurrence frequencies: **Every Day**, **Weekdays Only (Mon-Fri)**, **Weekends Only (Sat-Sun)**, **Specific Days (e.g. Mon, Wed, Fri)**, and **Monthly**.
+  - Recurring habits automatically expand and populate Day, Week, and Month calendar views seamlessly. Toggling a habit on either view automatically updates the other.
 - **Priority System**: 4 distinct visual priority levels:
   - `P1 - Urgent` (Crimson Red)
   - `P2 - High` (Amber Orange)
