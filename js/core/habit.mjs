@@ -37,6 +37,10 @@ export const HABIT_CATEGORIES = Object.freeze([
 export function isDateScheduledByRule(dateIso, rule = {}) {
   if (!rule || !rule.frequency) return true;
 
+  if (rule.startDate && dateIso < rule.startDate) {
+    return false;
+  }
+
   if (rule.endDate && dateIso > rule.endDate) {
     return false;
   }
@@ -118,7 +122,31 @@ export function validateHabitInput(input) {
     priority = PRIORITIES.P3_MEDIUM;
   }
 
-  const recurrence = input.recurrence || { frequency: RECURRENCE_FREQUENCIES.DAILY };
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  let startDate = (input.startDate || '').trim() || null;
+  let endDate = (input.endDate || '').trim() || null;
+
+  if (startDate && (!dateRegex.test(startDate) || isNaN(Date.parse(startDate)))) {
+    startDate = null;
+  }
+  if (endDate && (!dateRegex.test(endDate) || isNaN(Date.parse(endDate)))) {
+    endDate = null;
+  }
+
+  // If both provided and startDate > endDate, swap to keep valid range
+  if (startDate && endDate && startDate > endDate) {
+    const tmp = startDate;
+    startDate = endDate;
+    endDate = tmp;
+  }
+
+  const rawRecurrence = input.recurrence || {};
+  const recurrence = {
+    frequency: RECURRENCE_FREQUENCIES.DAILY,
+    ...rawRecurrence,
+    startDate: startDate || rawRecurrence.startDate || null,
+    endDate: endDate || rawRecurrence.endDate || null
+  };
   if (!Object.values(RECURRENCE_FREQUENCIES).includes(recurrence.frequency)) {
     recurrence.frequency = RECURRENCE_FREQUENCIES.DAILY;
   }
@@ -128,6 +156,8 @@ export function validateHabitInput(input) {
     description: (input.description || '').trim(),
     category: (input.category || 'Health').trim() || 'Health',
     priority,
+    startDate,
+    endDate,
     recurrence,
     timeOfDay: input.timeOfDay || 'anytime',
     targetDaysPerWeek: input.targetDaysPerWeek || 7

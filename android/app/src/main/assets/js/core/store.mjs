@@ -382,7 +382,12 @@ export function createPlannerStore(customActAdapter, customHabitAdapter) {
 
         if (dateRangeStart && dateRangeEnd) {
           for (const habit of habits) {
-            const occDates = generateOccurrences(dateRangeStart, dateRangeEnd, habit.recurrence);
+            const ruleWithBounds = {
+              ...habit.recurrence,
+              startDate: habit.startDate || habit.recurrence?.startDate || null,
+              endDate: habit.endDate || habit.recurrence?.endDate || null
+            };
+            const occDates = generateOccurrences(dateRangeStart, dateRangeEnd, ruleWithBounds);
             for (const d of occDates) {
               const isCompleted = Boolean(habit.completions && habit.completions[d]);
               items.push({

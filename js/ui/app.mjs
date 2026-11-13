@@ -908,6 +908,18 @@ export class DayPlannerApp {
       const card = document.createElement('div');
       card.className = 'habit-card';
 
+      // Date bounds badge label
+      let dateBoundsLabel = '';
+      const sDate = habit.startDate || habit.recurrence?.startDate;
+      const eDate = habit.endDate || habit.recurrence?.endDate;
+      if (sDate && eDate) {
+        dateBoundsLabel = `${sDate} – ${eDate}`;
+      } else if (sDate) {
+        dateBoundsLabel = `From ${sDate}`;
+      } else if (eDate) {
+        dateBoundsLabel = `Until ${eDate}`;
+      }
+
       // Build 14-day history dots HTML
       const dotsHtml = stats.historyLast14d.map(entry => {
         let dotClass = 'history-dot';
@@ -925,6 +937,7 @@ export class DayPlannerApp {
             <div class="habit-badges-row">
               <span class="habit-category-pill">${this.escapeHTML(habit.category)}</span>
               <span class="habit-recurrence-pill">${recurrenceLabel}</span>
+              ${dateBoundsLabel ? `<span class="habit-recurrence-pill" style="opacity:0.85;">📅 ${dateBoundsLabel}</span>` : ''}
               ${habit.timeOfDay && habit.timeOfDay !== 'anytime' ? `<span class="habit-category-pill">${habit.timeOfDay}</span>` : ''}
             </div>
           </div>
@@ -1023,6 +1036,8 @@ export class DayPlannerApp {
     document.getElementById('form-habit-category').value = preset.category || 'Health';
     document.getElementById('form-habit-time-of-day').value = preset.timeOfDay || 'anytime';
     document.getElementById('form-habit-recurrence').value = preset.recurrence?.frequency || 'DAILY';
+    document.getElementById('form-habit-start-date').value = preset.startDate || preset.recurrence?.startDate || '';
+    document.getElementById('form-habit-end-date').value = preset.endDate || preset.recurrence?.endDate || '';
     document.getElementById('form-habit-start-time').value = preset.startTime || '';
     document.getElementById('form-habit-priority').value = preset.priority || 'P3_MEDIUM';
     document.getElementById('form-habit-description').value = preset.description || '';
@@ -1049,6 +1064,8 @@ export class DayPlannerApp {
     const category = document.getElementById('form-habit-category').value;
     const timeOfDay = document.getElementById('form-habit-time-of-day').value;
     const frequency = document.getElementById('form-habit-recurrence').value;
+    const startDate = document.getElementById('form-habit-start-date').value || null;
+    const endDate = document.getElementById('form-habit-end-date').value || null;
     const startTime = document.getElementById('form-habit-start-time').value || null;
     const priority = document.getElementById('form-habit-priority').value;
     const description = document.getElementById('form-habit-description').value.trim();
@@ -1065,7 +1082,9 @@ export class DayPlannerApp {
 
     const recurrence = {
       frequency,
-      daysOfWeek: frequency === 'WEEKLY' ? daysOfWeek : undefined
+      daysOfWeek: frequency === 'WEEKLY' ? daysOfWeek : undefined,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined
     };
 
     try {
@@ -1074,6 +1093,8 @@ export class DayPlannerApp {
           title,
           category,
           timeOfDay,
+          startDate,
+          endDate,
           recurrence,
           startTime,
           priority,
@@ -1085,6 +1106,8 @@ export class DayPlannerApp {
           title,
           category,
           timeOfDay,
+          startDate,
+          endDate,
           recurrence,
           startTime,
           priority,
